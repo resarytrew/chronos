@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Mode, RunPlan, SessionRecord } from "@/lib/types";
+import type { ActiveRun, Mode, RunPlan, SessionRecord } from "@/lib/types";
 import {
   DIRECTION_LABEL,
   answerText,
@@ -30,6 +30,7 @@ import { Icons } from "./ui";
 type Phase = "start" | "countdown" | "question" | "finished" | "review";
 
 export interface BoardProps {
+  resume?: ActiveRun;
   plan: RunPlan;
   initialPhase?: "start" | "review";
   /** existing session when the review is opened from history */
@@ -38,31 +39,52 @@ export interface BoardProps {
   toast: (message: string) => void;
 }
 
-export default function Board({ plan, initialPhase = "start", session = null, onClose, toast }: BoardProps) {
+export default function Board({ plan, initialPhase = "start", session = null, resume, onClose, toast }: BoardProps) {
   const items = plan.items;
   const total = items.length;
   const s = plan.settings;
 
-  const [phase, setPhase] = useState<Phase>(initialPhase);
-  const [index, setIndex] = useState(0);
-  const [mode, setMode] = useState<Mode>(s.mode);
-  const [paused, setPaused] = useState(false);
+  const [phase, setPhase] = useState<Phase>(resume ? "question" : initialPhase);
+  const [index, setIndex] = useState(resume?.index ?? 0);
+  const [mode, setMode] = useState<Mode>(resume?.mode ?? s.mode);
+  const [paused, setPaused] = useState(Boolean(resume));
   const [shade, setShade] = useState(false);
   const [exitAsk, setExitAsk] = useState(false);
-  const [elapsedMs, setElapsedMs] = useState(0);
-  const [questionMs, setQuestionMs] = useState(0);
+  const [elapsedMs, setElapsedMs] = useState(resume?.elapsedMs ?? 0);
+  const [questionMs, setQuestionMs] = useState(resume?.questionMs ?? 0);
   const [countdownN, setCountdownN] = useState(3);
   const [revealed, setRevealed] = useState<Set<number>>(() => new Set());
   const [hardIds, setHardIds] = useState<Set<string>>(() => new Set(session?.hardIds ?? []));
   const [sessionId, setSessionId] = useState<string | null>(session?.id ?? null);
   const [speaking, setSpeaking] = useState(false);
 
-  const startedAtRef = useRef<string>(new Date().toISOString());
+  const [saveStatus, setSaveStatus] = useState("idle");
+  const [retry, setRetry] = useState(0);
+  const [interrupted, setInterrupted] = useState(false);
+  const [preview, setPreview] = useState(false);
+  const startedAtRef = useRef<string>(resume?.startedAt ?? new Date().toISOString());
   const savedRef = useRef(Boolean(session));
   const voiceOk = speechSupported();
 
   const running = phase === "question" && !paused && !shade && !exitAsk;
   const current = items[index];
+
+  useEffect(() => {
+    const hide = () => { if (document.hidden) { setPaused(true); stopSpeaking(); } };
+    document.addEventListener("visibilitychange", hide);
+    return () => document.removeEventListener("visibilitychange", hide);
+  }, []);
+  const snapshot = useRef<ActiveRun | null>(null);
+  snapshot.current = phase === "question" ? { id: "current", plan, index, mode, elapsedMs, questionMs, startedAt: startedAtRef.current } : null;
+  useEffect(() => {
+    if (phase !== "question") return;
+    let warned = false;
+    const save = () => { if (snapshot.current) void api.saveActiveRun(snapshot.current).catch(() => { if (!warned) toast("Не удалось сохранить позицию показа"); warned = true; }); };
+    save();
+    const timer = window.setInterval(save, 1000);
+    window.addEventListener("pagehide", save);
+    return () => { window.clearInterval(timer); window.removeEventListener("pagehide", save); };
+  }, [phase, index, mode, toast]);
 
   /* ---------- navigation ---------- */
 
@@ -73,7 +95,7 @@ export default function Board({ plan, initialPhase = "start", session = null, on
   }, [s.beep]);
 
   const goNext = useCallback(() => {
-    if (phase !== "question") return;
+    if (phase !== "question" || paused) return;
     if (index >= total - 1) {
       finish();
       return;
@@ -81,7 +103,7 @@ export default function Board({ plan, initialPhase = "start", session = null, on
     if (s.beep) beep("next");
     setIndex((i) => i + 1);
     setQuestionMs(0);
-  }, [phase, index, total, finish, s.beep]);
+  }, [phase, index, total, finish, s.beep, paused]);
 
   const goPrev = useCallback(() => {
     if (phase !== "question" || index === 0) return;
@@ -102,6 +124,8 @@ export default function Board({ plan, initialPhase = "start", session = null, on
   }, [s.beep, s.countdown]);
 
   const restart = useCallback(() => {
+    setInterrupted(false);
+    setSaveStatus("idle");
     savedRef.current = false;
     setSessionId(null);
     setRevealed(new Set());
@@ -195,14 +219,15 @@ export default function Board({ plan, initialPhase = "start", session = null, on
   }, [phase, s.beep]);
 
   useEffect(() => {
-    if (phase !== "question" || !s.voice || !current) return;
+    if (!running || !s.voice || !current) return;
     speakItem(current);
     return () => stopSpeaking();
-  }, [phase, index, s.voice, current]);
+  }, [running, index, s.voice, current]);
 
   useEffect(() => {
     if (phase !== "finished" || savedRef.current) return;
     savedRef.current = true;
+    setSaveStatus("saving");
     api
       .createSession({
         scenarioId: plan.scenarioId,
@@ -213,10 +238,12 @@ export default function Board({ plan, initialPhase = "start", session = null, on
         durationSec: Math.round(elapsedMs / 1000),
         items,
         startedAt: startedAtRef.current,
+        status: interrupted ? "interrupted" : "completed",
+        shownCount: index + 1,
       })
-      .then((rec) => setSessionId(rec.id))
-      .catch(() => toast("Не удалось сохранить результат в историю"));
-  }, [phase, plan.scenarioId, plan.title, s.direction, s.intervalSec, mode, elapsedMs, items, toast]);
+      .then((rec) => { setSessionId(rec.id); setSaveStatus("saved"); })
+      .catch(() => { savedRef.current = false; setSaveStatus("error"); });
+  }, [phase, plan.scenarioId, plan.title, s.direction, s.intervalSec, mode, elapsedMs, items, toast, interrupted, index, retry]);
 
   useEffect(() => {
     document.body.style.overflow = "hidden";
@@ -230,6 +257,7 @@ export default function Board({ plan, initialPhase = "start", session = null, on
 
   const handlersRef = useRef<(e: KeyboardEvent) => void>(() => {});
   handlersRef.current = (e: KeyboardEvent) => {
+    if (e.repeat) { e.preventDefault(); return; }
     const tag = (e.target as HTMLElement | null)?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA") return;
     const k = e.key;
@@ -284,6 +312,7 @@ export default function Board({ plan, initialPhase = "start", session = null, on
       if (phase === "start") start();
       else if (phase === "question") {
         if (mode === "auto") setPaused((p) => !p);
+        else if (paused) setPaused(false);
         else goNext();
       } else if (phase === "finished") setPhase("review");
       else if (phase === "review") revealNext();
@@ -345,6 +374,8 @@ export default function Board({ plan, initialPhase = "start", session = null, on
               <Icons.Play size={26} />
               Начать
             </button>
+            <button type="button" className="b-btn mt-3" onClick={() => setPreview(!preview)}>Предпросмотр доски</button>
+            {preview && current && <div className="b-question mt-4">{questionText(current)}</div>}
             {total === 0 && (
               <p className="mt-4" style={{ color: "var(--b-mute)" }}>
                 В выборке нет событий с датой и названием.
@@ -391,17 +422,16 @@ export default function Board({ plan, initialPhase = "start", session = null, on
 
           <div
             className="flex flex-1 flex-col items-center justify-center px-8 text-center"
-            onClick={() => (mode === "manual" ? goNext() : setPaused((p) => !p))}
           >
             <div className="mb-6 text-[1.1rem] font-semibold uppercase tracking-[0.14em]" style={{ color: "var(--b-mute)" }}>
               {current.ask === "date" ? "Запишите дату" : "Запишите событие"}
             </div>
-            <div key={index} className={`b-question ${current.ask === "event" ? "is-date" : ""}`}>
+            <div key={index} className={`b-question ${current.ask === "event" ? "is-date" : ""}`} style={questionText(current).length > 100 ? { fontSize: "clamp(1.8rem, 4vw, 4rem)", maxWidth: "38ch" } : undefined}>
               {questionText(current)}
             </div>
             {paused && (
               <div className="mt-10 flex items-center gap-3 text-[1.2rem]" style={{ color: "var(--b-mute)" }}>
-                <Icons.Pause /> Пауза — нажмите, чтобы продолжить
+                <Icons.Pause /> Пауза — нажмите кнопку «Продолжить»
               </div>
             )}
           </div>
@@ -416,7 +446,7 @@ export default function Board({ plan, initialPhase = "start", session = null, on
               </div>
             ) : (
               <div className="text-center text-[1rem]" style={{ color: "var(--b-mute)" }}>
-                {index === 0 ? "Нажмите на экран или → для следующего вопроса" : "\u00a0"}
+                {index === 0 ? "Нажмите «Далее» или → для следующего вопроса" : "\u00a0"}
               </div>
             )}
           </div>
@@ -426,11 +456,11 @@ export default function Board({ plan, initialPhase = "start", session = null, on
               <button type="button" className="b-btn" onClick={goPrev} disabled={index === 0} aria-label="Назад">
                 <Icons.Prev size={26} />
               </button>
-              {mode === "auto" ? (
+              {(
                 <button type="button" className="b-btn" onClick={() => setPaused((p) => !p)} aria-label={paused ? "Продолжить" : "Пауза"}>
                   {paused ? <Icons.Play size={26} /> : <Icons.Pause size={26} />}
                 </button>
-              ) : null}
+              )}
               <button type="button" className="b-btn" onClick={goNext} aria-label={index === total - 1 ? "Завершить" : "Далее"}>
                 {index === total - 1 ? <Icons.Check size={26} /> : <Icons.Next size={26} />}
               </button>
@@ -472,7 +502,7 @@ export default function Board({ plan, initialPhase = "start", session = null, on
               {plan.title}
             </div>
             <h1 className="mt-4 font-semibold tracking-tight" style={{ fontSize: "clamp(2.4rem, 6.5vw, 6rem)", lineHeight: 1.08 }}>
-              Диктант завершён
+              {interrupted ? "Занятие прервано" : "Занятие завершено"}
             </h1>
             <p className="mt-5 text-[1.3rem]" style={{ color: "var(--b-mute)" }}>
               {total} {total === 1 ? "вопрос" : total < 5 ? "вопроса" : "вопросов"}
@@ -503,7 +533,8 @@ export default function Board({ plan, initialPhase = "start", session = null, on
             </div>
           </div>
           <div className="px-6 pb-5 text-center text-[0.95rem]" style={{ color: "var(--b-mute)" }}>
-            Результат сохранён в «Истории» — порядок можно повторить позже.
+            {saveStatus === "saved" ? "Результат сохранён в «Истории» — порядок можно повторить позже." : saveStatus === "error" ? "Не удалось сохранить историю." : "Сохранение…"}
+            {saveStatus === "error" && <button className="b-btn" onClick={() => setRetry((v) => v + 1)}>Повторить сохранение</button>}
           </div>
         </div>
       )}
@@ -665,12 +696,13 @@ export default function Board({ plan, initialPhase = "start", session = null, on
                 className="b-btn b-outline"
                 onClick={() => {
                   setExitAsk(false);
+                  setInterrupted(true);
                   finish();
                 }}
               >
                 Завершить сейчас
               </button>
-              <button type="button" className="b-btn b-primary" style={{ minHeight: 64, fontSize: "1.1rem", padding: "0 1.6rem" }} onClick={close}>
+              <button type="button" className="b-btn b-primary" style={{ minHeight: 64, fontSize: "1.1rem", padding: "0 1.6rem" }} onClick={() => { setInterrupted(true); setExitAsk(false); finish(); }}>
                 Выйти
               </button>
             </div>

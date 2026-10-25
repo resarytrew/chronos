@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { withDefaults, type RunPlan, type SessionRecord } from "@/lib/types";
 import { DIRECTION_LABEL, MODE_LABEL, copyText, fmtClock, fmtDateTime, itemsToText } from "@/lib/utils";
 import { api, printAnswers } from "@/lib/client";
@@ -12,6 +12,7 @@ export default function HistoryList({ initial }: { initial: SessionRecord[] }) {
   const router = useRouter();
   const { startRun, openReview, toast } = useApp();
   const [items, setItems] = useState(initial);
+  useEffect(() => setItems(initial), [initial]);
   const [toDelete, setToDelete] = useState<SessionRecord | null>(null);
 
   const reload = async () => {
@@ -84,6 +85,7 @@ export default function HistoryList({ initial }: { initial: SessionRecord[] }) {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="text-[1.25rem] font-semibold leading-snug">{s.scenarioTitle}</div>
+                  {s.status === "interrupted" && <p className="text-mute">Прервано · показано {s.shownCount ?? 0} из {s.items.length}</p>}
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.95rem] text-mute">
                     <span suppressHydrationWarning>{fmtDateTime(s.finishedAt)}</span>
                     <span>·</span>

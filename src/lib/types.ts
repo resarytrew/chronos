@@ -89,6 +89,8 @@ export interface RunPlan {
 }
 
 export interface SessionRecord {
+  status?: "completed" | "interrupted";
+  shownCount?: number;
   id: string;
   scenarioId: string | null;
   scenarioTitle: string;
@@ -102,4 +104,14 @@ export interface SessionRecord {
   notes: string | null;
   startedAt: string;
   finishedAt: string;
+}
+
+export interface ActiveRun {
+  id: "current";
+  plan: RunPlan;
+  index: number;
+  elapsedMs: number;
+  questionMs: number;
+  mode: Mode;
+  startedAt: string;
 }

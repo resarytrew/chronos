@@ -1,0 +1,38 @@
+import { test, expect } from '@playwright/test';
+test('offline lesson resumes paused and held keys do not skip cards', async ({ page, context }) => {
+  await page.goto('./');
+  await expect(page.getByText('Готово к работе без интернета', {exact:true})).toBeVisible();
+  await page.getByRole('button', {name:'Быстрый диктант'}).click();
+  await page.getByRole('textbox').last().fill('988 — Крещение Руси\n1380 — Куликовская битва\n1613 — Воцарение Михаила Романова');
+  await page.getByRole('button', {name:'Добавить 3', exact:true}).click();
+  await expect(page.getByText('изменения сохранены', {exact:true})).toBeVisible();
+  await page.getByText('Вручную', {exact:true}).click();
+  await page.getByRole('button', {name:'Начать показ'}).click();
+  await page.getByRole('button', {name:'Начать', exact:true}).click();
+  await expect(page.locator('.b-question')).toHaveText('Крещение Руси');
+  await page.locator('.b-question').click();
+  await expect(page.locator('.b-question')).toHaveText('Крещение Руси');
+  await page.keyboard.down('ArrowRight');
+  await page.keyboard.down('ArrowRight');
+  await page.keyboard.up('ArrowRight');
+  await expect(page.locator('.b-question')).toHaveText('Куликовская битва');
+  await expect.poll(() => page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve,reject) => { const r=indexedDB.open('chronos'); r.onsuccess=()=>resolve(r.result); r.onerror=()=>reject(r.error); });
+    return new Promise<number>((resolve) => {const r=db.transaction('activeRuns').objectStore('activeRuns').get('current');r.onsuccess=()=>{resolve(r.result?.index);db.close();};});
+  })).toBe(1);
+  await context.setOffline(true);
+  await page.reload();
+  await page.getByRole('button',{name:'Продолжить с паузы'}).click();
+  await expect(page.locator('.b-question')).toHaveText('Куликовская битва');
+  await expect(page.getByRole('button',{name:'Продолжить',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Продолжить',exact:true}).click();
+  await page.getByRole('button',{name:'Далее',exact:true}).click();
+  await page.getByRole('button',{name:'Завершить',exact:true}).click();
+  await expect(page.getByText('Результат сохранён в «Истории» — порядок можно повторить позже.')).toBeVisible();
+  await page.getByRole('button',{name:'Показать ответы'}).click();
+  await page.getByRole('button',{name:'Открыть следующий'}).click();
+  await expect(page.locator('.rv-answer').first()).toHaveText('988');
+  await page.getByRole('button',{name:'Готово',exact:true}).click();
+  await page.goto('history/');
+  await expect(page.getByRole('button',{name:'Повторить',exact:false}).first()).toBeVisible();
+});

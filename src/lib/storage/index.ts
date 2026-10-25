@@ -14,6 +14,7 @@ import {
   type ScenarioSettings,
   type ScenarioSummary,
   type SessionRecord,
+  type ActiveRun,
 } from "@/lib/types";
 
 type StoredScenario = ScenarioFull & { kind: "user" };
@@ -22,6 +23,7 @@ type StoredSession = SessionRecord;
 class ChronosDatabase extends Dexie {
   scenarios!: Table<StoredScenario, string>;
   sessions!: Table<StoredSession, string>;
+  activeRuns!: Table<ActiveRun, string>;
 
   constructor() {
     super("chronos");
@@ -30,6 +32,7 @@ class ChronosDatabase extends Dexie {
       scenarios: "id, updatedAt, createdAt, kind",
       sessions: "id, finishedAt, startedAt, scenarioId",
     });
+    this.version(2).stores({ activeRuns: "id" });
   }
 }
 
@@ -138,6 +141,9 @@ function enqueue<T>(id: string, operation: () => Promise<T>): Promise<T> {
 }
 
 export const storage = {
+  async getActiveRun() { return db.activeRuns.get("current"); },
+  async saveActiveRun(run: ActiveRun) { await enqueue("active", () => db.activeRuns.put(run)); },
+  async clearActiveRun() { await enqueue("active", () => db.activeRuns.delete("current")); },
   async listScenarios(kind: "user" | "library" = "user"): Promise<ScenarioSummary[]> {
     if (kind === "library") return libraryScenarios().map(toSummary);
     const records = await db.scenarios.orderBy("updatedAt").reverse().toArray();
@@ -223,8 +229,13 @@ export const storage = {
       notes: null,
       startedAt: input.startedAt ?? stamp,
       finishedAt: stamp,
+      status: input.status ?? "completed",
+      shownCount: input.shownCount ?? input.items.length,
     };
-    await db.sessions.add(record);
+    await enqueue("active", () => db.transaction("rw", db.sessions, db.activeRuns, async () => {
+      await db.sessions.add(record);
+      await db.activeRuns.delete("current");
+    }));
     return record;
   },
 

@@ -396,7 +396,7 @@ textarea.field { padding: 0.75rem 0.85rem; line-height: 1.45; resize: vertical; 
   flex-direction: column;
   user-select: none;
   --b-fg: #111;
-  --b-mute: #8a8a86;
+  --b-mute: #62625f;
   --b-line: #e4e4e0;
   --b-soft: #f3f3f0;
 }
@@ -424,6 +424,11 @@ textarea.field { padding: 0.75rem 0.85rem; line-height: 1.45; resize: vertical; 
   transition: background 0.15s, color 0.15s;
   touch-action: manipulation;
 }
+.board .b-btn { min-width: 56px !important; min-height: 56px !important; touch-action: manipulation; }
+.board { overflow-y: auto; z-index: 200; }
+.board > .flex { min-height: 0; }
+.board > .flex > .flex-1 { min-height: 0; overflow-y: auto; }
+.board .b-question { overflow-wrap: anywhere; }
 .board .b-btn:hover { background: var(--b-soft); color: var(--b-fg); }
 .board .b-btn:disabled { opacity: 0.3; cursor: default; }
 .board .b-btn[data-active="true"] { color: var(--b-fg); background: var(--b-soft); }

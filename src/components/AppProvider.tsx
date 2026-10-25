@@ -1,12 +1,15 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
-import type { RunPlan, SessionRecord } from "@/lib/types";
+import type { ActiveRun, RunPlan, SessionRecord } from "@/lib/types";
+import { api } from "@/lib/client";
+import PwaRegistration from "./PwaRegistration";
 
 const Board = dynamic(() => import("./Board"), { ssr: false });
 
 interface PlayerState {
+  resume?: ActiveRun;
   plan: RunPlan;
   initialPhase: "start" | "review";
   session: SessionRecord | null;
@@ -34,6 +37,8 @@ export default function AppProvider({ children }: { children: ReactNode }) {
   const [player, setPlayer] = useState<PlayerState | null>(null);
   const [toasts, setToasts] = useState<{ id: number; text: string }[]>([]);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [pending, setPending] = useState<ActiveRun | null>(null);
+  useEffect(() => { void api.getActiveRun().then((r) => setPending(r ?? null)).catch(() => {}); }, []);
 
   const toast = useCallback((text: string) => {
     const id = Date.now() + Math.random();
@@ -81,9 +86,12 @@ export default function AppProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={value}>
       {children}
+      <PwaRegistration active={Boolean(player)} />
+      {pending && !player && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><div className="card max-w-lg p-8"><h2 className="text-2xl font-semibold">Продолжить занятие?</h2><p className="my-4">{pending.plan.title} · задание {pending.index + 1} из {pending.plan.items.length}</p><div className="flex flex-wrap gap-3"><button className="btn btn-primary" onClick={() => { setPlayer({ plan: pending.plan, initialPhase: "start", session: null, resume: pending }); setPending(null); }}>Продолжить с паузы</button><button className="btn" onClick={() => { void api.clearActiveRun().then(() => { setPlayer({ plan: pending.plan, initialPhase: "start", session: null }); setPending(null); }).catch(() => toast("Не удалось сбросить позицию")); }}>Начать заново</button><button className="btn" onClick={() => setPending(null)}>Позже</button></div></div></div>}
       {player && (
         <Board
           plan={player.plan}
+          resume={player.resume}
           initialPhase={player.initialPhase}
           session={player.session}
           toast={toast}

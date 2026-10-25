@@ -62,6 +62,12 @@ export default function ScenarioEditor({ initial, autoPaste }: { initial: Scenar
   const focusId = useRef<string | null>(null);
 
   useEffect(() => setVoiceOk(speechSupported()), []);
+  useEffect(() => {
+    if (!autoPaste) return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("paste");
+    window.history.replaceState(window.history.state, "", url);
+  }, [autoPaste]);
 
   /* ---------- autosave ---------- */
 
