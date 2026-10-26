@@ -26,6 +26,28 @@ test("teacher sets sequence order; pupils reorder before explicit checking",asyn
   await expect(page.getByRole("button",{name:"Повторить",exact:false}).first()).toBeVisible();
 });
 
+test("multiple choice selection can change before explicit check",async({page})=>{
+  await page.goto("./");
+  await page.getByRole("combobox",{name:"Тип нового занятия"}).selectOption("choice");
+  await page.getByRole("button",{name:"Новая тема"}).click();
+  await page.getByRole("button",{name:"Добавить задание",exact:true}).click();
+  await page.getByRole("textbox",{name:"Вопрос 1",exact:true}).fill("В каком году произошло Крещение Руси?");
+  await page.getByRole("textbox",{name:"Вариант 1",exact:true}).fill("988");
+  await page.getByRole("textbox",{name:"Вариант 2",exact:true}).fill("1380");
+  await page.getByRole("textbox",{name:"Пояснение 1",exact:true}).fill("Князь Владимир. Конец X века.");
+  await page.getByRole("button",{name:"Начать показ",exact:true}).click();
+  await page.getByRole("button",{name:"Начать",exact:true}).click();
+  await page.getByRole("button",{name:"2. 1380",exact:true}).click();
+  await page.getByRole("button",{name:"1. 988",exact:true}).click();
+  await expect(page.locator(".board").getByText("Князь Владимир. Конец X века.",{exact:true})).toHaveCount(0);
+  await page.getByRole("button",{name:"Проверить",exact:true}).click();
+  await expect(page.getByText("Верно",{exact:true})).toBeVisible();
+  await page.getByRole("button",{name:"2. 1380",exact:true}).click();
+  await expect(page.getByText("Верно",{exact:true})).toHaveCount(0);
+  await page.getByRole("button",{name:"Проверить",exact:true}).click();
+  await expect(page.getByText("Проверьте ответ ещё раз",{exact:true})).toBeVisible();
+});
+
 test("question answer stays hidden until teacher reveals and history keeps its snapshot",async({page})=>{
   await page.goto("./");
   await page.getByRole("combobox",{name:"Тип нового занятия"}).selectOption("qa");

@@ -13,3 +13,11 @@ test("sequence validation and shuffled order never disclose the teacher order in
   assert.notEqual(plan.items[0].task?.type==="sequence"&&plan.items[0].task.cards[0].text,"Изменено");
   assert.equal(plan.settings.mode,"manual");
 });
+
+test("choice rejects duplicate or invalid correct answers",()=>{
+  const t=newTask("choice");if(t.type!=="choice")return;
+  t.prompt="Дата?";t.options=["988","1380"];t.correctIndex=0;
+  assert.equal(taskError(t),null);
+  t.options=["988","988"];assert.ok(taskError(t));
+  t.options=["988","1380"];t.correctIndex=3;assert.ok(taskError(t));
+});
