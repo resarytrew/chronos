@@ -19,7 +19,7 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -35,7 +35,9 @@ jobs:
         env:
           # Default project path; keep the same prefix for the static resources.
           NEXT_PUBLIC_BASE_PATH: ${{ vars.BASE_PATH || format('/{0}', github.event.repository.name) }}
-      - run: npx playwright install --with-deps chromium
+      # The hosted image includes Chromium's shared libraries and Cyrillic fonts.
+      # Avoid reinstalling optional system fonts from the Ubuntu apt mirror.
+      - run: npx playwright install chromium
       - run: npx playwright test
       - uses: actions/upload-pages-artifact@v4
         with:
