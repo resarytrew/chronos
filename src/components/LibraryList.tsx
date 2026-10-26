@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { ScenarioFull } from "@/lib/types";
-import { buildRunPlan, eventsWord } from "@/lib/utils";
+import { buildRunPlan, buildStudyPlan, eventsWord } from "@/lib/utils";
 import { ERA_MAP } from "@/lib/eras";
 import { api } from "@/lib/client";
 import { useApp } from "./AppProvider";
@@ -12,7 +12,7 @@ import ScenarioFilters, { EMPTY_FILTERS, filterScenarios } from "./ScenarioFilte
 
 export default function LibraryList({ items }: { items: ScenarioFull[] }) {
   const router = useRouter();
-  const { toast, startRun } = useApp();
+  const { toast, startRun, openStudy } = useApp();
   const [preview, setPreview] = useState<ScenarioFull | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [catalog,setCatalog]=useState(items);
@@ -78,6 +78,9 @@ export default function LibraryList({ items }: { items: ScenarioFull[] }) {
                 <button type="button" className="btn btn-ghost" onClick={() => setPreview(s)}>
                   <Icons.Eye size={20} />
                   Список
+                </button>
+                <button type="button" className="btn" onClick={()=>{void api.markOpened(s.id).catch(()=>{});openStudy(buildStudyPlan({scenarioId:s.id,title:s.title,events:s.events,settings:s.settings,selection:{type:"all"}},"chronological"),"chronological");}}>
+                  <Icons.Eye size={20}/>Изучать даты
                 </button>
               </div>
             </div>

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { ActivityType, ScenarioSummary } from "@/lib/types";
-import { downloadJson, fmtDate } from "@/lib/utils";
+import { downloadJson, fmtDate, buildStudyPlan } from "@/lib/utils";
 import { api } from "@/lib/client";
 import { scenarioPlan, ACTIVITY_LABELS, ENABLED_ACTIVITIES } from "@/lib/activities";
 import type { TransferFile } from "@/lib/transfer";
@@ -13,7 +13,7 @@ import ScenarioFilters, { EMPTY_FILTERS, filterScenarios } from "./ScenarioFilte
 
 export default function ScenarioList({ initial }: { initial: ScenarioSummary[] }) {
   const router = useRouter();
-  const { toast, startRun } = useApp();
+  const { toast, startRun, openStudy } = useApp();
   const [items,setItems] = useState(initial);
   const [busy,setBusy] = useState(false);
   const [toDelete,setToDelete] = useState<ScenarioSummary|null>(null);
@@ -43,6 +43,13 @@ export default function ScenarioList({ initial }: { initial: ScenarioSummary[] }
   };
   const favorite=async(s:ScenarioSummary)=>{
     try {await api.updateScenario(s.id,{favorite:!s.favorite});await reload();}catch(e){fail(e);}
+  };
+  const study=async(id:string)=>{
+    try{const s=await api.getScenario(id);if(!s)return;
+      const plan=buildStudyPlan({scenarioId:s.id,title:s.title,events:s.events,settings:s.settings,selection:{type:"all"}},"chronological");
+      if(!plan.items.length)throw new Error("В наборе нет заполненных дат");
+      await api.markOpened(id);openStudy(plan,"chronological",()=>{void reload();});
+    }catch(e){fail(e);}
   };
   const duplicate=async(id:string)=>{
     try {const s=await api.getScenario(id);if(!s)return;await api.createScenario({...s,title:s.title+" (копия)",favorite:false});await reload();toast("Набор скопирован");}catch(e){fail(e);}
@@ -100,6 +107,7 @@ export default function ScenarioList({ initial }: { initial: ScenarioSummary[] }
         <button className="btn btn-primary" onClick={()=>run(s.id)}><Icons.Play size={20}/>Провести</button>
         <Menu trigger={<button className="btn btn-ghost btn-icon" aria-label="Действия"><Icons.More/></button>} items={[
           {label:"Открыть",onClick:()=>router.push("/scenarios/editor/?id="+s.id)},
+          ...(!s.activityType||s.activityType==="dictation"?[{label:"Изучать даты",onClick:()=>{void study(s.id);}}]:[]),
           {label:"Дублировать",onClick:()=>duplicate(s.id)},
           {label:"Экспорт набора",onClick:async()=>{try{downloadJson(s.title+".json",await api.exportPackage([s.id]));}catch(e){fail(e);}}},
           {label:"Удалить",onClick:()=>setToDelete(s),danger:true},

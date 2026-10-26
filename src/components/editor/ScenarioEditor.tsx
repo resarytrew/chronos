@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { EventItem, ScenarioFull, ScenarioSettings, Selection } from "@/lib/types";
+import type { EventItem, ScenarioFull, ScenarioSettings, Selection, StudyOrder } from "@/lib/types";
 import {
   analyzeEvents,
   buildRunPlan,
+  buildStudyPlan,
   copyText,
   eventsToText,
   eventsWord,
@@ -44,7 +45,7 @@ function newEvent(partial?: Partial<EventItem>): EventItem {
 
 export default function ScenarioEditor({ initial, autoPaste }: { initial: ScenarioFull; autoPaste?: boolean }) {
   const router = useRouter();
-  const { startRun, toast } = useApp();
+  const { startRun, openStudy, toast } = useApp();
 
   const [title, setTitle] = useState(initial.title);
   const [meta,setMeta]=useState({className:initial.className,section:initial.section,description:initial.description});
@@ -235,6 +236,13 @@ export default function ScenarioEditor({ initial, autoPaste }: { initial: Scenar
     router.push(`/scenarios/editor/?id=${copy.id}`);
   };
 
+  const study=async(order:StudyOrder)=>{
+    const plan=buildStudyPlan({scenarioId:initial.id,title,events,settings,selection},order);
+    if(!plan.items.length){toast("Нет заполненных дат для изучения");return;}
+    try{await saveNow();await api.markOpened(initial.id);openStudy(plan,order);}
+    catch{toast("Не удалось сохранить набор. Повторите сохранение.");}
+  };
+
   const remove = async () => {
     await api.deleteScenario(initial.id);
     toast("Сценарий удалён");
@@ -384,6 +392,7 @@ export default function ScenarioEditor({ initial, autoPaste }: { initial: Scenar
         onSelection={setSelection}
         events={events}
         onStart={start}
+        onStudy={study}
         onVariants={() => setVariantsOpen(true)}
         voiceSupported={voiceOk}
       />

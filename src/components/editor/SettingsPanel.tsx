@@ -1,6 +1,7 @@
 "use client";
 
-import type { EventItem, ScenarioSettings, Selection } from "@/lib/types";
+import { useState } from "react";
+import type { EventItem, ScenarioSettings, Selection, StudyOrder } from "@/lib/types";
 import { applySelection, estimateDuration, fmtDuration, usableEvents } from "@/lib/utils";
 import { Icons, Seg, Toggle } from "@/components/ui";
 
@@ -12,10 +13,12 @@ interface Props {
   events: EventItem[];
   onStart: () => void;
   onVariants: () => void;
+  onStudy: (order:StudyOrder) => void;
   voiceSupported: boolean;
 }
 
-export default function SettingsPanel({ settings, onSettings, selection, onSelection, events, onStart, onVariants, voiceSupported }: Props) {
+export default function SettingsPanel({ settings, onSettings, selection, onSelection, events, onStart, onVariants, onStudy, voiceSupported }: Props) {
+  const [studyOrder,setStudyOrder]=useState<StudyOrder>("chronological");
   const usable = usableEvents(events);
   const selectedCount =
     selection.type === "all"
@@ -159,6 +162,13 @@ export default function SettingsPanel({ settings, onSettings, selection, onSelec
         <p className="mt-2 text-center text-sm text-mute">
           ≈ {fmtDuration(estimate)} · во весь экран
         </p>
+      </div>
+
+      <div className="rounded-2xl border border-line p-4">
+        <h3 className="text-[1.1rem] font-semibold">Изучение дат</h3>
+        <p className="mt-1 mb-3 text-sm text-mute">Список с закрытыми датами. Открывайте ответы по одному или нажатием на строку.</p>
+        <Seg value={studyOrder} onChange={setStudyOrder} options={[{value:"chronological",label:"По хронологии"},{value:"shuffled",label:"Вперемешку"}]}/>
+        <button type="button" className="btn btn-lg w-full mt-3" onClick={()=>onStudy(studyOrder)} disabled={selectedCount===0}><Icons.Eye size={22}/>Изучать даты</button>
       </div>
 
       <button type="button" className="btn w-full" onClick={onVariants} disabled={selectedCount === 0}>

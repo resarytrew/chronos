@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ActiveRun, Mode, RunPlan, SessionRecord, TaskResponse } from "@/lib/types";
+import type { ActiveRun, Mode, RunPlan, SessionRecord, TaskResponse, StudyOrder } from "@/lib/types";
 import { ACTIVITY_LABELS, initialOrder } from "@/lib/activities";
 import TaskBoard from "./TaskBoard";
 import LocalImage, { useImageSources } from "./LocalImage";
@@ -14,6 +14,7 @@ import {
   gradingScale,
   itemsToText,
   questionText,
+  orderStudyItems,
 } from "@/lib/utils";
 import {
   api,
@@ -34,6 +35,7 @@ import { Icons } from "./ui";
 type Phase = "start" | "countdown" | "question" | "finished" | "review";
 
 export interface BoardProps {
+  studyOrder?: StudyOrder;
   resume?: ActiveRun;
   plan: RunPlan;
   initialPhase?: "start" | "review";
@@ -43,8 +45,10 @@ export interface BoardProps {
   toast: (message: string) => void;
 }
 
-export default function Board({ plan, initialPhase = "start", session = null, resume, onClose, toast }: BoardProps) {
-  const items = plan.items;
+export default function Board({ plan, initialPhase = "start", session = null, resume, studyOrder, onClose, toast }: BoardProps) {
+  const studying=studyOrder!==undefined;
+  const [items,setItems]=useState(plan.items);
+  const [studyOrderValue,setStudyOrderValue]=useState<StudyOrder>(studyOrder??"chronological");
   const total = items.length;
   const s = plan.settings;
   const activity = items[0]?.task?.type;
@@ -71,6 +75,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
   const [interrupted, setInterrupted] = useState(false);
   const [preview, setPreview] = useState(false);
   const startedAtRef = useRef<string>(resume?.startedAt ?? new Date().toISOString());
+  const studyScroll=useRef<HTMLDivElement>(null);
   const savedRef = useRef(Boolean(session));
   const voiceOk = speechSupported();
 
@@ -236,7 +241,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
   }, [running, index, s.voice, current]);
 
   useEffect(() => {
-    if (phase !== "finished" || savedRef.current) return;
+    if (studying || phase !== "finished" || savedRef.current) return;
     savedRef.current = true;
     setSaveStatus("saving");
     api
@@ -254,7 +259,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
       })
       .then((rec) => { setSessionId(rec.id); setSaveStatus("saved"); })
       .catch(() => { savedRef.current = false; setSaveStatus("error"); });
-  }, [phase, plan.scenarioId, plan.title, s.direction, s.intervalSec, mode, elapsedMs, items, toast, interrupted, index, retry]);
+  }, [phase, plan.scenarioId, plan.title, s.direction, s.intervalSec, mode, elapsedMs, items, toast, interrupted, index, retry, studying]);
 
   useEffect(() => {
     document.body.style.overflow = "hidden";
@@ -279,7 +284,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
       if (shade) setShade(false);
       else if (exitAsk) setExitAsk(false);
       else if (phase === "question") setExitAsk(true);
-      else if (phase === "review") setPhase("finished");
+      else if (phase === "review") { if(studying) close(); else setPhase("finished"); }
       else close();
       return;
     }
@@ -291,7 +296,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
       return;
     }
     if (exitAsk) return;
-    if (code === "KeyB" && (phase === "question" || phase === "finished")) {
+    if (code === "KeyB" && (phase === "question" || phase === "finished" || phase === "review")) {
       e.preventDefault();
       setShade(true);
       return;
@@ -344,6 +349,12 @@ export default function Board({ plan, initialPhase = "start", session = null, re
   const remainingSec = Math.ceil(remainingMs / 1000);
   const openedCount = revealed.size;
   const bands = activity ? [] : gradingScale(total);
+  const changeStudyOrder=(order:StudyOrder)=>{
+    setStudyOrderValue(order);
+    setItems(orderStudyItems(items,order));
+    setRevealed(new Set());
+    studyScroll.current?.scrollTo({top:0});
+  };
 
   const closeBtn = (
     <button type="button" className="b-btn" onClick={() => (phase === "question" ? setExitAsk(true) : close())} aria-label="Выйти">
@@ -354,7 +365,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
   /* ---------- render ---------- */
 
   return (
-    <div className="board" data-theme={s.theme} data-scale={s.fontScale} role="application" aria-label="Показ диктанта">
+    <div className="board" data-theme={s.theme} data-scale={s.fontScale} role="application" aria-label={studying?"Изучение дат":"Показ диктанта"}>
       {shade && (
         <div className="b-shade" onClick={() => setShade(false)}>
           Шторка · нажмите, чтобы продолжить
@@ -559,7 +570,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
         <div className="flex flex-1 flex-col overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3 px-6 pt-4 pb-3">
             <div className="flex items-baseline gap-4">
-              <h2 className="text-[1.7rem] font-semibold tracking-tight">Ответы</h2>
+              <h2 className="text-[1.7rem] font-semibold tracking-tight">{studying?"Изучение дат":"Ответы"}</h2>
               <span className="text-[1.1rem] tabular-nums" style={{ color: "var(--b-mute)" }}>
                 {openedCount} / {total} открыто
               </span>
@@ -600,11 +611,17 @@ export default function Board({ plan, initialPhase = "start", session = null, re
               {closeBtn}
             </div>
           </div>
+          {studying&&<div className="flex flex-wrap items-center gap-2 px-6 pb-3">
+            <span className="mr-auto truncate text-lg" title={plan.title}>{plan.title}</span>
+            <button className="b-btn" data-active={studyOrderValue==="chronological"} aria-pressed={studyOrderValue==="chronological"} onClick={()=>changeStudyOrder("chronological")}>По хронологии</button>
+            <button className="b-btn" data-active={studyOrderValue==="shuffled"} aria-pressed={studyOrderValue==="shuffled"} onClick={()=>changeStudyOrder("shuffled")}>Перемешать</button>
+            <button className="b-btn" disabled={!openedCount} onClick={()=>setRevealed(new Set())}>Скрыть все даты</button>
+          </div>}
           <div className="b-progress">
             <div style={{ width: `${total ? (openedCount / total) * 100 : 0}%` }} />
           </div>
-          <div className="flex-1 overflow-y-auto px-6 py-5">
-            <div className="mx-auto flex max-w-5xl flex-col gap-3">
+          <div ref={studyScroll} className="flex-1 overflow-y-auto px-6 py-5">
+            <div className="mx-auto flex max-w-[1440px] flex-col gap-3">
               {items.map((it, i) => {
                 const open = revealed.has(i);
                 const hard = hardIds.has(it.id);
@@ -613,23 +630,22 @@ export default function Board({ plan, initialPhase = "start", session = null, re
                   <div
                     key={`${it.id}-${i}`}
                     className="rv-row"
+                    data-study={studying}
                     data-open={open}
                     data-hard={hard}
                     onClick={() => {
-                      if (!open) setRevealed((prev) => new Set(prev).add(i));
+                      if(studying) setRevealed(prev=>{const next=new Set(prev);if(next.has(i))next.delete(i);else next.add(i);return next;});
+                      else if (!open) setRevealed((prev) => new Set(prev).add(i));
                     }}
                   >
                     <div className="flex items-center gap-2 text-[1.2rem] tabular-nums" style={{ color: "var(--b-mute)" }}>
                       {i + 1}
                     </div>
-                    <div className="text-[1.25rem] leading-snug">
-                      <span className="mr-2 text-[0.8rem] font-semibold uppercase tracking-[0.1em]" style={{ color: "var(--b-mute)" }}>
-                        {it.ask === "date" ? "Событие" : "Дата"}
-                      </span>
-                      {questionText(it)}
+                    <div className="rv-question leading-snug">
+                      {studying?<button type="button" className="rv-toggle" aria-label={(open?"Скрыть дату: ":"Открыть дату: ")+questionText(it)} aria-expanded={open} onClick={e=>{e.stopPropagation();setRevealed(prev=>{const next=new Set(prev);if(next.has(i))next.delete(i);else next.add(i);return next;});}}>{questionText(it)}</button>:questionText(it)}
                       {it.task?.type==="image" && <LocalImage id={it.task.imageId} alt={it.task.alt}/>}
                     </div>
-                    <div className="rv-answer text-[1.35rem] leading-snug">
+                    <div className="rv-answer leading-snug">
                       {open ? (
                         <span className="rv-reveal inline-flex items-center gap-3">
                           {era && (
@@ -646,7 +662,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
                       )}
                     </div>
                     <div>
-                      {open ? (
+                      {open && !studying ? (
                         <button
                           type="button"
                           className="b-btn"
@@ -664,7 +680,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
                         </button>
                       ) : (
                         <span className="text-[0.9rem]" style={{ color: "var(--b-mute)" }}>
-                          нажмите
+                          {studying&&open?"скрыть":"нажмите"}
                         </span>
                       )}
                     </div>
@@ -675,14 +691,14 @@ export default function Board({ plan, initialPhase = "start", session = null, re
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3 border-t px-6 py-3" style={{ borderColor: "var(--b-line)" }}>
             <span className="text-[1rem]" style={{ color: "var(--b-mute)" }}>
-              {hardIds.size > 0
+              {studying ? "Нажмите на строку, чтобы открыть или скрыть дату. Пробел или → — открыть следующую." : hardIds.size > 0
                 ? `Отмечено трудных: ${hardIds.size} — из них можно собрать «Работу над ошибками» в Истории`
                 : "Отмечайте трудные события флажком — потом соберёте из них новый диктант"}
             </span>
             <div className="flex gap-2">
-              <button type="button" className="b-btn" onClick={() => setPhase("finished")}>
+              {!studying&&<button type="button" className="b-btn" onClick={() => setPhase("finished")}>
                 Назад
-              </button>
+              </button>}
               <button type="button" className="b-btn b-outline" style={{ minHeight: 52 }} onClick={close}>
                 Готово
               </button>

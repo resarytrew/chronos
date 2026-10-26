@@ -2,6 +2,7 @@ export type Direction = "event-to-date" | "date-to-event" | "mixed";
 export type Mode = "auto" | "manual";
 export type BoardTheme = "light" | "dark";
 export type FontScale = "m" | "l" | "xl";
+export type StudyOrder = "chronological" | "shuffled";
 
 export interface ScenarioSettings {
   intervalSec: number;

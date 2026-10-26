@@ -7,6 +7,7 @@ import type {
   RunPlan,
   ScenarioSettings,
   Selection,
+  StudyOrder,
 } from "./types";
 
 /* ---------- ids ---------- */
@@ -244,6 +245,19 @@ export function buildRunPlan(opts: {
   }
   items = items.map((it) => ({ ...it }));
   return { scenarioId: opts.scenarioId, title: opts.title, items, settings: { ...opts.settings } };
+}
+
+/** Independent date practice always conceals dates; never changes the source set. */
+export function orderStudyItems(items: RunItem[], order: StudyOrder): RunItem[] {
+  const chronological = [...items].sort((a,b)=>(parseDateSort(a.dateText) ?? Infinity)-(parseDateSort(b.dateText) ?? Infinity));
+  if(order === "chronological") return chronological;
+  const mixed=shuffle(items);
+  return mixed.length>1 && mixed.every((it,i)=>it.id===items[i].id) ? [...mixed.slice(1),mixed[0]] : mixed;
+}
+
+export function buildStudyPlan(opts: Parameters<typeof buildRunPlan>[0], order: StudyOrder): RunPlan {
+  const plan=buildRunPlan({...opts,settings:{...opts.settings,direction:"event-to-date",shuffle:false,mode:"manual",countdown:false,voice:false,beep:false}});
+  return {...plan,items:orderStudyItems(plan.items,order)};
 }
 
 /** Prompt shown on the board for a card. */

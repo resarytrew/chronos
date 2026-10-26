@@ -2,13 +2,14 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
-import type { ActiveRun, RunPlan, SessionRecord } from "@/lib/types";
-import { api } from "@/lib/client";
+import type { ActiveRun, RunPlan, SessionRecord, StudyOrder } from "@/lib/types";
+import { api, enterFullscreen, requestWakeLock } from "@/lib/client";
 import PwaRegistration from "./PwaRegistration";
 
 const Board = dynamic(() => import("./Board"), { ssr: false });
 
 interface PlayerState {
+  studyOrder?: StudyOrder;
   resume?: ActiveRun;
   plan: RunPlan;
   initialPhase: "start" | "review";
@@ -17,6 +18,7 @@ interface PlayerState {
 }
 
 interface AppContextValue {
+  openStudy: (plan: RunPlan, order: StudyOrder, onClosed?: () => void) => void;
   startRun: (plan: RunPlan, onClosed?: () => void) => void;
   openReview: (session: SessionRecord, onClosed?: () => void) => void;
   toast: (message: string) => void;
@@ -71,16 +73,23 @@ export default function AppProvider({ children }: { children: ReactNode }) {
     setPlayer({ plan, initialPhase: "review", session, onClosed });
   }, []);
 
+  const openStudy=useCallback((plan:RunPlan,order:StudyOrder,onClosed?:()=>void)=>{
+    enterFullscreen();
+    void requestWakeLock();
+    setPlayer({plan,studyOrder:order,initialPhase:"review",session:null,onClosed});
+  },[]);
+
   const value = useMemo<AppContextValue>(
     () => ({
       startRun,
       openReview,
+      openStudy,
       toast,
       openHelp: () => setHelpOpen(true),
       closeHelp: () => setHelpOpen(false),
       helpOpen,
     }),
-    [startRun, openReview, toast, helpOpen],
+    [startRun, openReview, openStudy, toast, helpOpen],
   );
 
   return (
@@ -92,6 +101,7 @@ export default function AppProvider({ children }: { children: ReactNode }) {
         <Board
           plan={player.plan}
           resume={player.resume}
+          studyOrder={player.studyOrder}
           initialPhase={player.initialPhase}
           session={player.session}
           toast={toast}
