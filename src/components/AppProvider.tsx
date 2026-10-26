@@ -85,7 +85,7 @@ export default function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <Ctx.Provider value={value}>
-      {children}
+      <div inert={Boolean(player)}>{children}</div>
       <PwaRegistration active={Boolean(player)} />
       {pending && !player && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><div className="card max-w-lg p-8"><h2 className="text-2xl font-semibold">Продолжить занятие?</h2><p className="my-4">{pending.plan.title} · задание {pending.index + 1} из {pending.plan.items.length}</p><div className="flex flex-wrap gap-3"><button className="btn btn-primary" onClick={() => { setPlayer({ plan: pending.plan, initialPhase: "start", session: null, resume: pending }); setPending(null); }}>Продолжить с паузы</button><button className="btn" onClick={() => { void api.clearActiveRun().then(() => { setPlayer({ plan: pending.plan, initialPhase: "start", session: null }); setPending(null); }).catch(() => toast("Не удалось сбросить позицию")); }}>Начать заново</button><button className="btn" onClick={() => setPending(null)}>Позже</button></div></div></div>}
       {player && (

@@ -25,3 +25,27 @@ test("teacher sets sequence order; pupils reorder before explicit checking",asyn
   await page.goto("history/");
   await expect(page.getByRole("button",{name:"Повторить",exact:false}).first()).toBeVisible();
 });
+
+test("question answer stays hidden until teacher reveals and history keeps its snapshot",async({page})=>{
+  await page.goto("./");
+  await page.getByRole("combobox",{name:"Тип нового занятия"}).selectOption("qa");
+  await page.getByRole("button",{name:"Новая тема"}).click();
+  await page.getByRole("button",{name:"Добавить задание",exact:true}).click();
+  await page.getByRole("textbox",{name:"Вопрос 1",exact:true}).fill("Кто основал Санкт-Петербург?");
+  await page.getByRole("textbox",{name:"Ответ 1",exact:true}).fill("Пётр I");
+  await page.getByRole("button",{name:"Начать показ",exact:true}).click();
+  await page.getByRole("button",{name:"Начать",exact:true}).click();
+  const board=page.locator(".board");
+  await expect(board.getByText("Пётр I",{exact:true})).toHaveCount(0);
+  await page.getByRole("button",{name:"Показать ответ",exact:true}).click();
+  await expect(board.getByText("Пётр I",{exact:true})).toBeVisible();
+  await page.getByRole("button",{name:"Завершить",exact:true}).click();
+  await expect(page.getByText("Результат сохранён в «Истории» — порядок можно повторить позже.")).toBeVisible();
+  await page.getByRole("button",{name:"Выйти",exact:true}).last().click();
+  await page.getByRole("textbox",{name:"Ответ 1",exact:true}).fill("Изменённый ответ");
+  await expect(page.getByText("изменения сохранены",{exact:true})).toBeVisible();
+  await page.goto("history/");
+  await page.getByRole("button",{name:"Ответы",exact:true}).click();
+  await page.getByRole("button",{name:"Открыть следующий",exact:true}).click();
+  await expect(page.locator(".rv-answer").first()).toContainText("Пётр I");
+});
