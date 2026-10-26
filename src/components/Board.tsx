@@ -1,7 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ActiveRun, Mode, RunPlan, SessionRecord } from "@/lib/types";
+import type { ActiveRun, Mode, RunPlan, SessionRecord, TaskResponse } from "@/lib/types";
+import { ACTIVITY_LABELS, initialOrder } from "@/lib/activities";
+import TaskBoard from "./TaskBoard";
+import LocalImage, { useImageSources } from "./LocalImage";
 import {
   DIRECTION_LABEL,
   answerText,
@@ -18,6 +21,7 @@ import {
   enterFullscreen,
   exitFullscreen,
   printAnswers,
+  printWorksheet,
   releaseWakeLock,
   requestWakeLock,
   speakItem,
@@ -43,6 +47,10 @@ export default function Board({ plan, initialPhase = "start", session = null, re
   const items = plan.items;
   const total = items.length;
   const s = plan.settings;
+  const activity = items[0]?.task?.type;
+  const makeResponses = () => Object.fromEntries(items.filter(it=>it.task).map(it=>[it.id,{order:initialOrder(it.task!)}]));
+  const [responses,setResponses] = useState<Record<string,TaskResponse>>(()=>resume?.responses ?? makeResponses());
+  const sources=useImageSources(items.flatMap(it=>it.task?[it.task]:[]));
 
   const [phase, setPhase] = useState<Phase>(resume ? "question" : initialPhase);
   const [index, setIndex] = useState(resume?.index ?? 0);
@@ -58,7 +66,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
   const [sessionId, setSessionId] = useState<string | null>(session?.id ?? null);
   const [speaking, setSpeaking] = useState(false);
 
-  const [saveStatus, setSaveStatus] = useState("idle");
+  const [saveStatus, setSaveStatus] = useState(session ? "saved" : "idle");
   const [retry, setRetry] = useState(0);
   const [interrupted, setInterrupted] = useState(false);
   const [preview, setPreview] = useState(false);
@@ -75,7 +83,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
     return () => document.removeEventListener("visibilitychange", hide);
   }, []);
   const snapshot = useRef<ActiveRun | null>(null);
-  snapshot.current = phase === "question" ? { id: "current", plan, index, mode, elapsedMs, questionMs, startedAt: startedAtRef.current } : null;
+  snapshot.current = phase === "question" ? { id: "current", plan, index, mode, elapsedMs, questionMs, responses, startedAt: startedAtRef.current } : null;
   useEffect(() => {
     if (phase !== "question") return;
     let warned = false;
@@ -84,7 +92,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
     const timer = window.setInterval(save, 1000);
     window.addEventListener("pagehide", save);
     return () => { window.clearInterval(timer); window.removeEventListener("pagehide", save); };
-  }, [phase, index, mode, toast]);
+  }, [phase, index, mode, toast, responses]);
 
   /* ---------- navigation ---------- */
 
@@ -120,8 +128,11 @@ export default function Board({ plan, initialPhase = "start", session = null, re
     setQuestionMs(0);
     setIndex(0);
     setPaused(false);
+    setResponses(makeResponses());
     setPhase(s.countdown ? "countdown" : "question");
-  }, [s.beep, s.countdown]);
+  // The plan is immutable for the lifetime of one board.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.beep, s.countdown, items]);
 
   const restart = useCallback(() => {
     setInterrupted(false);
@@ -176,9 +187,9 @@ export default function Board({ plan, initialPhase = "start", session = null, re
       if (n.has(id)) n.delete(id);
       else n.add(id);
       setHardIds(n);
-      if (sessionId) api.updateSession(sessionId, { hardIds: Array.from(n) }).catch(() => {});
+      if (sessionId) api.updateSession(sessionId, { hardIds: Array.from(n) }).catch(() => toast("Не удалось сохранить отметку. Повторите действие."));
     },
-    [hardIds, sessionId],
+    [hardIds, sessionId, toast],
   );
 
   /* ---------- timers ---------- */
@@ -257,9 +268,10 @@ export default function Board({ plan, initialPhase = "start", session = null, re
 
   const handlersRef = useRef<(e: KeyboardEvent) => void>(() => {});
   handlersRef.current = (e: KeyboardEvent) => {
-    if (e.repeat) { e.preventDefault(); return; }
     const tag = (e.target as HTMLElement | null)?.tagName;
-    if (tag === "INPUT" || tag === "TEXTAREA") return;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    if (e.repeat) { e.preventDefault(); return; }
+    if(tag === "BUTTON" && (e.key === "Enter" || e.key === " ")) return;
     const k = e.key;
     const code = e.code;
     if (k === "Escape") {
@@ -284,7 +296,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
       setShade(true);
       return;
     }
-    if (code === "KeyA" && phase === "question") {
+    if (code === "KeyA" && phase === "question" && !activity) {
       e.preventDefault();
       setMode((m) => (m === "auto" ? "manual" : "auto"));
       setQuestionMs(0);
@@ -331,7 +343,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
   const remainingMs = Math.max(0, intervalMs - questionMs);
   const remainingSec = Math.ceil(remainingMs / 1000);
   const openedCount = revealed.size;
-  const bands = gradingScale(total);
+  const bands = activity ? [] : gradingScale(total);
 
   const closeBtn = (
     <button type="button" className="b-btn" onClick={() => (phase === "question" ? setExitAsk(true) : close())} aria-label="Выйти">
@@ -354,7 +366,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
         <div className="flex flex-1 flex-col">
           <div className="flex items-center justify-between px-6 pt-4">
             <span className="label-mute" style={{ color: "var(--b-mute)" }}>
-              Хронологический диктант
+              {ACTIVITY_LABELS[activity??"dictation"]}
             </span>
             {closeBtn}
           </div>
@@ -366,7 +378,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
               {plan.title}
             </h1>
             <p className="mt-6 text-[1.25rem] sm:text-[1.5rem]" style={{ color: "var(--b-mute)" }}>
-              {total} {total === 1 ? "вопрос" : total < 5 ? "вопроса" : "вопросов"} · {DIRECTION_LABEL[s.direction]} ·{" "}
+              {total} {total === 1 ? "вопрос" : total < 5 ? "вопроса" : "вопросов"} · {activity ? ACTIVITY_LABELS[activity] : DIRECTION_LABEL[s.direction]} ·{" "}
               {s.mode === "auto" ? `${s.intervalSec} сек на ответ` : "смена вручную"}
               {plan.repeat ? " · повтор порядка" : ""}
             </p>
@@ -375,7 +387,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
               Начать
             </button>
             <button type="button" className="b-btn mt-3" onClick={() => setPreview(!preview)}>Предпросмотр доски</button>
-            {preview && current && <div className="b-question mt-4">{questionText(current)}</div>}
+            {preview && current && (current.task ? <TaskBoard task={current.task} response={responses[current.id]??{}} onChange={r=>setResponses(p=>({...p,[current.id]:r}))}/> : <div className="b-question mt-4">{questionText(current)}</div>)}
             {total === 0 && (
               <p className="mt-4" style={{ color: "var(--b-mute)" }}>
                 В выборке нет событий с датой и названием.
@@ -423,12 +435,14 @@ export default function Board({ plan, initialPhase = "start", session = null, re
           <div
             className="flex flex-1 flex-col items-center justify-center px-8 text-center"
           >
+            {current.task ? <TaskBoard key={current.id} task={current.task} response={responses[current.id]??{}} disabled={paused||exitAsk} onChange={r=>setResponses(p=>({...p,[current.id]:r}))}/> : <>
             <div className="mb-6 text-[1.1rem] font-semibold uppercase tracking-[0.14em]" style={{ color: "var(--b-mute)" }}>
               {current.ask === "date" ? "Запишите дату" : "Запишите событие"}
             </div>
             <div key={index} className={`b-question ${current.ask === "event" ? "is-date" : ""}`} style={questionText(current).length > 100 ? { fontSize: "clamp(1.8rem, 4vw, 4rem)", maxWidth: "38ch" } : undefined}>
               {questionText(current)}
             </div>
+            </>}
             {paused && (
               <div className="mt-10 flex items-center gap-3 text-[1.2rem]" style={{ color: "var(--b-mute)" }}>
                 <Icons.Pause /> Пауза — нажмите кнопку «Продолжить»
@@ -475,6 +489,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
               <button
                 type="button"
                 className="b-btn"
+                disabled={Boolean(activity)}
                 onClick={() => {
                   setMode((m) => (m === "auto" ? "manual" : "auto"));
                   setQuestionMs(0);
@@ -573,7 +588,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
                 type="button"
                 className="b-btn"
                 onClick={() => {
-                  if (!printAnswers(plan.title, items, `${DIRECTION_LABEL[s.direction]}`)) toast("Разрешите всплывающие окна для печати");
+                  if (!(activity ? printWorksheet(plan.title,items,true,sources) : printAnswers(plan.title, items, `${DIRECTION_LABEL[s.direction]}`))) toast("Разрешите всплывающие окна для печати");
                 }}
                 aria-label="Печать"
               >
@@ -612,6 +627,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
                         {it.ask === "date" ? "Событие" : "Дата"}
                       </span>
                       {questionText(it)}
+                      {it.task?.type==="image" && <LocalImage id={it.task.imageId} alt={it.task.alt}/>}
                     </div>
                     <div className="rv-answer text-[1.35rem] leading-snug">
                       {open ? (
@@ -623,7 +639,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
                               title={era.label}
                             />
                           )}
-                          {answerText(it)}
+                          <span>{answerText(it)}{it.task?.explanation&&<span className="mt-2 block text-base">{it.task.explanation}</span>}</span>
                         </span>
                       ) : (
                         <span className="rv-mask" aria-label="Скрыто" />

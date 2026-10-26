@@ -48,6 +48,9 @@ export default function HistoryList({ initial }: { initial: SessionRecord[] }) {
     if (!hard.length) return;
     const created = await api.createScenario({
       title: `${s.scenarioTitle} — работа над ошибками`,
+      activityType:hard[0]?.task?.type ?? "dictation",
+      tasks:hard.flatMap(it=>it.task?[it.task]:[]),
+      settings:hard[0]?.task?{mode:"manual",voice:false}:undefined,
       events: hard.map((it) => ({ dateText: it.dateText, title: it.title, era: it.era })),
     });
     toast(`Создан сценарий из ${hard.length} трудных событий`);

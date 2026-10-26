@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import ScenarioEditor from "@/components/editor/ScenarioEditor";
+import ActivityEditor from "@/components/editor/ActivityEditor";
 import { api } from "@/lib/client";
 import type { ScenarioFull } from "@/lib/types";
 
@@ -21,7 +22,7 @@ function EditorContent() {
 
   if (scenario === undefined) return <div className="p-8 text-mute">Открываем сценарий…</div>;
   if (!scenario || scenario.kind !== "user") return <div className="p-8">Сценарий не найден или был удалён.</div>;
-  return <ScenarioEditor key={scenario.id} initial={scenario} autoPaste={params.get("paste") === "1"} />;
+  return scenario.activityType && scenario.activityType !== "dictation" ? <ActivityEditor key={scenario.id} initial={scenario}/> : <ScenarioEditor key={scenario.id} initial={scenario} autoPaste={params.get("paste") === "1"} />;
 }
 
 export default function EditorPage() {

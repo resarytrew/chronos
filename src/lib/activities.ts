@@ -5,7 +5,7 @@ export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   qa: 'Вопрос — ответ', choice: 'Выбор ответа', image: 'Историческое изображение',
 };
 // Each new exercise is enabled only after its own acceptance checks.
-export const ENABLED_ACTIVITIES: ActivityType[] = ['dictation'];
+export const ENABLED_ACTIVITIES: ActivityType[] = ['dictation','sequence'];
 
 export function taskError(task: ActivityTask): string | null {
   if (!task.id || !task.prompt?.trim()) return 'Заполните вопрос';
