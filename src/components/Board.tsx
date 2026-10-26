@@ -48,7 +48,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
   const total = items.length;
   const s = plan.settings;
   const activity = items[0]?.task?.type;
-  const makeResponses = () => Object.fromEntries(items.filter(it=>it.task).map(it=>[it.id,{order:initialOrder(it.task!)}]));
+  const makeResponses = () => Object.fromEntries(items.filter(it=>it.task).map(it=>[it.id,{order:it.presentationOrder ?? initialOrder(it.task!)}]));
   const [responses,setResponses] = useState<Record<string,TaskResponse>>(()=>resume?.responses ?? makeResponses());
   const sources=useImageSources(items.flatMap(it=>it.task?[it.task]:[]));
 

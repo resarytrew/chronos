@@ -40,7 +40,7 @@ export function scenarioPlan(s: ScenarioFull): RunPlan {
   const tasks = s.tasks ?? [];
   if (!tasks.length || tasks.some(t => taskError(t))) throw new Error('Заполните все задания перед показом');
   const ordered = s.settings.shuffle ? shuffle(tasks) : tasks;
-  return {scenarioId:s.id,title:s.title,settings:{...s.settings,mode:'manual',direction:'event-to-date',voice:false},items:ordered.map(task => ({id:task.id,title:task.prompt,dateText:taskAnswer(task),era:null,ask:'date',task:structuredClone(task)}))};
+  return {scenarioId:s.id,title:s.title,settings:{...s.settings,mode:'manual',direction:'event-to-date',voice:false},items:ordered.map(task => ({id:task.id,title:task.prompt,dateText:taskAnswer(task),era:null,ask:'date',task:structuredClone(task),presentationOrder:task.type==="sequence"?initialOrder(task):undefined}))};
 }
 export function initialOrder(task: ActivityTask): string[] {
   if (task.type !== 'sequence') return [];

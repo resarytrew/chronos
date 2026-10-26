@@ -8,7 +8,7 @@ export default function PwaRegistration({ active }: { active: boolean }) {
   const [error, setError] = useState(false);
   useEffect(() => {
     if (!('serviceWorker' in navigator)) { setError(true); return; }
-    const base = process.env.NEXT_PUBLIC_BASE_PATH || '';
+    const base = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
     let mounted = true;
     const check = (r: ServiceWorkerRegistration) => {
       if (!mounted) return;
@@ -22,7 +22,10 @@ export default function PwaRegistration({ active }: { active: boolean }) {
     void navigator.serviceWorker.register(base + '/sw.js', { scope: base + '/', updateViaCache: 'none' }).then(r => {
       if (!mounted) return;
       setRegistration(r); check(r);
-      r.addEventListener('updatefound', () => r.installing?.addEventListener('statechange', () => check(r)));
+      r.addEventListener('updatefound', () => {
+        const worker=r.installing;
+        worker?.addEventListener('statechange', () => {check(r);if(mounted&&worker.state==='redundant'&&!r.active)setError(true);});
+      });
       void navigator.serviceWorker.ready.then(() => check(r));
     }).catch(() => setError(true));
     return () => { mounted = false; };

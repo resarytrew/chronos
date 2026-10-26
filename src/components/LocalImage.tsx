@@ -20,9 +20,9 @@ export async function prepareImage(file: File): Promise<ImageAsset> {
   }finally{bitmap.close();}
 }
 export function useImageSources(tasks:ActivityTask[]):Record<string,string> {
-  const ids=[...new Set(tasks.flatMap(t=>t.type==="image"&&t.imageId?[t.imageId]:[]))].sort().join("|");
+  const ids=JSON.stringify([...new Set(tasks.flatMap(t=>t.type==="image"&&t.imageId?[t.imageId]:[]))].sort());
   const [sources,setSources]=useState<Record<string,string>>({});
-  useEffect(()=>{let mounted=true;const list=ids?ids.split("|"):[];void Promise.all(list.map(id=>api.getImage(id))).then(assets=>{if(mounted)setSources(Object.fromEntries(assets.filter((a):a is ImageAsset=>Boolean(a)).map(a=>[a.id,a.dataUrl])));}).catch(()=>{if(mounted)setSources({});});return()=>{mounted=false;};},[ids]);
+  useEffect(()=>{let mounted=true;const list=JSON.parse(ids) as string[];void Promise.all(list.map(id=>api.getImage(id))).then(assets=>{if(mounted)setSources(Object.fromEntries(assets.filter((a):a is ImageAsset=>Boolean(a)).map(a=>[a.id,a.dataUrl])));}).catch(()=>{if(mounted)setSources({});});return()=>{mounted=false;};},[ids]);
   return sources;
 }
 export default function LocalImage({id,alt,caption,className}:{id:string;alt:string;caption?:string;className?:string}) {

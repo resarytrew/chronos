@@ -38,3 +38,32 @@ test("portable package preserves media and legacy imports; damaged replacement i
   assert.equal(legacy?.events[0].dateText,"1380 г.");
   assert.equal(legacy?.activityType,"dictation");
 });
+
+test("image collection keeps assets referenced by history and removes only unused ones",async()=>{
+  await storage.putImage({id:"history-asset",dataUrl:"data:image/png;base64,aGVsbG8="});
+  const task={id:"image-task",type:"image" as const,prompt:"Вопрос",answer:"Ответ",imageId:"history-asset",alt:"Карта"};
+  const session=await storage.createSession({scenarioId:null,scenarioTitle:"История",items:[{id:task.id,title:task.prompt,dateText:task.answer,ask:"date",era:null,task}],mode:"manual",direction:"event-to-date",intervalSec:7,durationSec:5,startedAt:new Date().toISOString()});
+  await storage.collectUnusedImages();
+  assert.ok(await storage.getImage("history-asset"));
+  await storage.deleteSession(session.id);
+  await storage.collectUnusedImages();
+  assert.equal(await storage.getImage("history-asset"),undefined);
+});
+
+test("full backup merge remaps scenario and image collisions consistently",async()=>{
+  const image={id:"colliding",dataUrl:"data:image/png;base64,aGVsbG8="};
+  await storage.putImage(image);
+  const task={id:"task-collision",type:"image" as const,prompt:"Портрет",answer:"Пётр",imageId:image.id,alt:"Портрет"};
+  const scenario=await storage.createScenario({title:"Связи копии",activityType:"image",tasks:[task]});
+  await storage.createSession({scenarioId:scenario.id,scenarioTitle:scenario.title,items:[{id:task.id,title:task.prompt,dateText:task.answer,era:null,ask:"date",task}],direction:"event-to-date",mode:"manual",intervalSec:7,durationSec:5,startedAt:new Date().toISOString()});
+  const backup=await storage.exportAll();
+  await storage.putImage({...image,dataUrl:"data:image/png;base64,YWJj"});
+  await storage.importAll(backup,"merge");
+  const copy=(await storage.listScenariosFull()).find(s=>s.title===scenario.title&&s.id!==scenario.id)!;
+  const session=(await storage.listSessions()).find(s=>s.scenarioId===copy.id)!;
+  assert.ok(copy);assert.ok(session);
+  assert.equal(copy.tasks?.[0].type==="image"&&copy.tasks[0].imageId,session.items[0].task?.type==="image"&&session.items[0].task.imageId);
+  const imageId=copy.tasks?.[0].type==="image"?copy.tasks[0].imageId:"";
+  assert.notEqual(imageId,image.id);
+  assert.equal((await storage.getImage(imageId))?.dataUrl,image.dataUrl);
+});

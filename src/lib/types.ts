@@ -87,6 +87,7 @@ export type Ask = "date" | "event";
 
 export interface RunItem {
   task?: ActivityTask;
+  presentationOrder?: string[];
   id: string;
   dateText: string;
   title: string;

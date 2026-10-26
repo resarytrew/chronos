@@ -53,7 +53,7 @@ export default function ScenarioList({ initial }: { initial: ScenarioSummary[] }
     try {downloadJson("chronos-backup-"+new Date().toISOString().slice(0,10)+".json",await api.exportAll());await api.noteBackupExport();setBackup(await api.backupStatus());toast("Копия подготовлена. Сохраните скачанный файл.");}catch(e){fail(e);}
   };
   const read=async(file:File,full=false)=>{
-    try {if(file.size>60_000_000) throw new Error("Файл слишком большой (максимум 60 МБ)");
+    try {
       setPending(api.inspectTransfer(JSON.parse(await file.text()),full?"chronos-backup":undefined));
     }catch(e){fail(e);}
   };

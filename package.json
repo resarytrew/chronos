@@ -4,14 +4,15 @@
   "scripts": {
     "dev": "next dev --webpack",
     "build": "next build --webpack && node scripts/offline.mjs",
-    "start": "next start",
+    "start": "node scripts/serve.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/**/*.test.ts"
+    "test": "tsx --test tests/**/*.test.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "dexie": "^4.2.1",
-    "next": "16.2.6",
+    "next": "16.4.3",
     "react": "19.2.6",
     "react-dom": "19.2.6"
   },
@@ -24,9 +25,9 @@
     "caniuse-lite": "^1.0.30001819",
     "es-abstract": "^1.24.2",
     "eslint": "9.39.4",
-    "eslint-config-next": "16.2.6",
+    "eslint-config-next": "16.4.3",
     "fake-indexeddb": "^6.2.6",
-    "postcss": "8.5.8",
+    "postcss": "8.5.31",
     "tailwindcss": "4.1.17",
     "tsx": "^4.20.6",
     "typescript": "5.9.3"

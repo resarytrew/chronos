@@ -148,7 +148,7 @@ function enqueue<T>(id: string, operation: () => Promise<T>): Promise<T> {
 
 export const storage = {
   async getPreference<T>(id: string, fallback: T): Promise<T> { return (await db.preferences.get(id))?.value as T ?? fallback; },
-  async setPreference(id: string, value: unknown) { await db.preferences.put({id,value}); },
+  async setPreference(id: string, value: unknown) { await db.transaction("rw",db.preferences,async()=>{await db.preferences.put({id,value});await db.preferences.put({id:"modifiedAt",value:now()});}); },
   async getImage(id: string) { return db.images.get(id); },
   async putImage(image: ImageAsset) { await db.images.put(image); },
   async markOpened(id: string) {
@@ -198,7 +198,7 @@ export const storage = {
       createdAt: stamp,
       updatedAt: stamp,
     };
-    await db.scenarios.add(scenario);
+    await db.transaction("rw",db.scenarios,db.preferences,async()=>{await db.scenarios.add(scenario);await db.preferences.put({id:"modifiedAt",value:now()});});
     return scenario;
   },
 
@@ -218,7 +218,7 @@ export const storage = {
         events: input.events === undefined ? current.events : cleanEvents(input.events),
         updatedAt: now(),
       };
-      await db.transaction("rw", db.scenarios, async () => db.scenarios.put(updated));
+      await db.transaction("rw", db.scenarios, db.preferences, async () => {await db.scenarios.put(updated);await db.preferences.put({id:"modifiedAt",value:now()});});
       return updated;
     });
   },
@@ -226,7 +226,7 @@ export const storage = {
   async deleteScenario(id: string): Promise<boolean> {
     const exists = await db.scenarios.get(id);
     if (!exists) return false;
-    await db.transaction("rw", db.scenarios, async () => db.scenarios.delete(id));
+    await db.transaction("rw", db.scenarios, db.preferences, async () => {await db.scenarios.delete(id);await db.preferences.put({id:"modifiedAt",value:now()});});
     return true;
   },
 
@@ -253,9 +253,10 @@ export const storage = {
       status: input.status ?? "completed",
       shownCount: input.shownCount ?? input.items.length,
     };
-    await enqueue("active", () => db.transaction("rw", db.sessions, db.activeRuns, async () => {
+    await enqueue("active", () => db.transaction("rw", db.sessions, db.activeRuns, db.preferences, async () => {
       await db.sessions.add(record);
       await db.activeRuns.delete("current");
+      await db.preferences.put({id:"modifiedAt",value:now()});
     }));
     return record;
   },
@@ -265,7 +266,7 @@ export const storage = {
       const current = await db.sessions.get(id);
       if (!current) return null;
       const updated = { ...current, ...input };
-      await db.sessions.put(updated);
+      await db.transaction("rw",db.sessions,db.preferences,async()=>{await db.sessions.put(updated);await db.preferences.put({id:"modifiedAt",value:now()});});
       return updated;
     });
   },
@@ -273,7 +274,7 @@ export const storage = {
   async deleteSession(id: string): Promise<boolean> {
     const exists = await db.sessions.get(id);
     if (!exists) return false;
-    await db.sessions.delete(id);
+    await db.transaction("rw",db.sessions,db.preferences,async()=>{await db.sessions.delete(id);await db.preferences.put({id:"modifiedAt",value:now()});});
     return true;
   },
 
@@ -289,7 +290,8 @@ export const storage = {
     const exportedAt = (await db.preferences.get("backupExportedAt"))?.value as string | undefined;
     const modified = await db.scenarios.orderBy("updatedAt").last();
     const history = await db.sessions.orderBy("finishedAt").last();
-    return {exportedAt:exportedAt ?? null,changed: Boolean((modified && (!exportedAt || modified.updatedAt > exportedAt)) || (history && (!exportedAt || history.finishedAt > exportedAt)))};
+    const changedAt=(await db.preferences.get("modifiedAt"))?.value as string | undefined;
+    return {exportedAt:exportedAt ?? null,changed: Boolean((changedAt&&(!exportedAt||changedAt>exportedAt)) || (modified && (!exportedAt || modified.updatedAt > exportedAt)) || (history && (!exportedAt || history.finishedAt > exportedAt)))};
   },
   async exportAll(): Promise<BackupFile> {
     await Promise.all([...saveQueues.values()]);
@@ -333,6 +335,7 @@ export const storage = {
       if (mode === "replace" || !(await db.activeRuns.get("current"))) {
         for (const r of file.activeRuns) await db.activeRuns.put({...r,plan:{...r.plan,scenarioId:r.plan.scenarioId ? scenarioMap.get(r.plan.scenarioId) ?? r.plan.scenarioId : null,items:r.plan.items.map(remapItem)}});
       }
+      await db.preferences.put({id:"modifiedAt",value:now()});
     });
     return {scenarios:scenarios.length,sessions:file.sessions.length};
   },

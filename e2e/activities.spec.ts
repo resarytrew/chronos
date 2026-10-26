@@ -11,6 +11,7 @@ test("teacher sets sequence order; pupils reorder before explicit checking",asyn
   await page.getByRole("button",{name:"Начать показ",exact:true}).click();
   await page.getByRole("button",{name:"Начать",exact:true}).click();
   await expect(page.locator(".task-card")).toHaveCount(3);
+  await page.locator(".task-card").first().dragTo(page.locator(".task-card").last());
   await expect(page.locator(".board").getByText("События расположены по времени.",{exact:true})).toHaveCount(0);
   for(let i=0;i<3;i++){
     let position=await page.locator(".task-card").filter({hasText:cards[i]}).evaluate(el=>Array.from(el.parentElement!.children).indexOf(el));

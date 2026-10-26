@@ -16,7 +16,7 @@ export default function TaskBoard({task,response,onChange,disabled=false}:{task:
   };
   const correct=task.type==="sequence"?task.cards.every((c,i)=>order[i]===c.id):task.type==="choice"?response.selected===task.correctIndex:true;
   return <div className="mx-auto w-full max-w-5xl space-y-4 py-4 text-left">
-    <h2 className="text-center text-[clamp(1.6rem,3.3vw,3rem)] font-semibold leading-tight break-words">{task.prompt}</h2>
+    <h2 className="task-prompt text-center text-[clamp(1.6rem,3.3vw,3rem)] font-semibold leading-tight break-words">{task.prompt}</h2>
     {task.type==="image"&&<LocalImage id={task.imageId} alt={task.alt} caption={task.caption}/>}
     {task.type==="sequence"&&<ol className="space-y-2">{order.map((id,i)=>{
       const card=task.cards.find(c=>c.id===id);
@@ -32,6 +32,7 @@ export default function TaskBoard({task,response,onChange,disabled=false}:{task:
       {(task.type==="sequence"||task.type==="choice")&&<p className="mb-2 font-semibold">{correct?"Верно":"Проверьте ответ ещё раз"}</p>}
       <p className="whitespace-pre-line">{taskAnswer(task)}</p>
       {task.explanation&&<p className="mt-3">{task.explanation}</p>}
+      {task.type==="image"&&task.source&&/^https?:\/\//i.test(task.source)&&<a className="mt-3 block text-base underline" href={task.source} target="_blank" rel="noreferrer">Источник изображения</a>}
     </div>}
   </div>;
 }

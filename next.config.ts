@@ -4,6 +4,7 @@ const basePath = process.env.NEXT_PUBLIC_BASE_PATH?.replace(/\/$/, "") ?? "";
 
 const nextConfig: NextConfig = {
   output: "export",
+  outputFileTracingRoot: process.cwd(),
   trailingSlash: true,
   basePath,
   assetPrefix: basePath || undefined,

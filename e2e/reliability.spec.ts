@@ -1,5 +1,6 @@
 import {test,expect} from "@playwright/test";
 import {importLesson} from "./helpers";
+import {DEFAULT_SETTINGS} from "../src/lib/types";
 test("failed history write is visible and can be retried without a duplicate",async({page})=>{
   await importLesson(page,{title:"Сохранение при ошибке",events:[{id:"e",dateText:"988",title:"Крещение Руси",yearSort:988,era:null}]});
   await page.evaluate(()=>{
@@ -18,6 +19,31 @@ test("failed history write is visible and can be retried without a duplicate",as
   await expect(page.getByText("Результат сохранён в «Истории» — порядок можно повторить позже.")).toBeVisible();
   const count=await page.evaluate(async()=>{const db=await new Promise<IDBDatabase>(resolve=>{const r=indexedDB.open("chronos");r.onsuccess=()=>resolve(r.result);});return new Promise<number>(resolve=>{const r=db.transaction("sessions").objectStore("sessions").count();r.onsuccess=()=>{resolve(r.result);db.close();};});});
   expect(count).toBe(1);
+});
+
+test("teacher interruption is recorded as interrupted rather than completed",async({page})=>{
+  await importLesson(page,{title:"Прерывание",events:[{id:"one",dateText:"988",title:"Крещение Руси",yearSort:988,era:null},{id:"two",dateText:"1380",title:"Куликовская битва",yearSort:1380,era:null}]});
+  await page.getByRole("button",{name:"Выйти",exact:true}).click();
+  await page.getByRole("button",{name:"Завершить сейчас",exact:true}).click();
+  await expect(page.getByRole("heading",{name:"Занятие прервано",exact:true})).toBeVisible();
+  await expect(page.getByText("Результат сохранён в «Истории» — порядок можно повторить позже.")).toBeVisible();
+  await page.getByRole("button",{name:"Выйти",exact:true}).last().click();
+  await page.goto("history/");
+  await expect(page.getByText("Прервано · показано 1 из 2",{exact:true})).toBeVisible();
+});
+
+test("hiding the tab pauses automatic presentation until explicit resume",async({page})=>{
+  await page.clock.install();
+  await importLesson(page,{title:"Пауза",settings:{...DEFAULT_SETTINGS,mode:"auto",intervalSec:3,countdown:false},events:[{id:"one",dateText:"988",title:"Крещение Руси",yearSort:988,era:null},{id:"two",dateText:"1380",title:"Куликовская битва",yearSort:1380,era:null}]});
+  await page.evaluate(()=>{Object.defineProperty(document,"hidden",{configurable:true,value:true});document.dispatchEvent(new Event("visibilitychange"));});
+  await expect(page.getByRole("button",{name:"Продолжить",exact:true})).toBeVisible();
+  await page.clock.fastForward(10000);
+  await expect(page.locator(".b-question")).toHaveText("Крещение Руси");
+  await page.evaluate(()=>{Object.defineProperty(document,"hidden",{configurable:true,value:false});document.dispatchEvent(new Event("visibilitychange"));});
+  await expect(page.getByRole("button",{name:"Продолжить",exact:true})).toBeVisible();
+  await page.getByRole("button",{name:"Продолжить",exact:true}).click();
+  await page.clock.fastForward(3500);
+  await expect(page.locator(".b-question")).toHaveText("Куликовская битва");
 });
 test("an update waits during the lesson and teacher applies it after closing",async({page})=>{
   await page.goto("./");

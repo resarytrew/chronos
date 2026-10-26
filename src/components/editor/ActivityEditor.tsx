@@ -37,11 +37,15 @@ export default function ActivityEditor({initial}:{initial:ScenarioFull}) {
     window.addEventListener("beforeunload",leave);return()=>window.removeEventListener("beforeunload",leave);
   },[state]);
   const patch=(v:Partial<ScenarioFull>)=>setDraft(s=>({...s,...v}));
-  const update=(task:ActivityTask)=>patch({tasks:tasks.map(t=>t.id===task.id?task:t)});
+  const update=(task:ActivityTask)=>{
+    const before=tasks.find(t=>t.id===task.id) as unknown as Record<string,unknown>;
+    const changes=Object.fromEntries(Object.entries(task).filter(([key,value])=>before?.[key]!==value));
+    setDraft(s=>({...s,tasks:s.tasks?.map(t=>t.id===task.id?{...t,...changes} as ActivityTask:t)}));
+  };
   const moveTask=(i:number,d:number)=>{const a=[...tasks];if(i+d<0||i+d>=a.length)return;[a[i],a[i+d]]=[a[i+d],a[i]];patch({tasks:a});};
   const image=async(task:Extract<ActivityTask,{type:"image"}>,file:File)=>{
     setUploading(true);
-    try{const asset=await prepareImage(file);setDraft(s=>({...s,tasks:s.tasks?.map(t=>t.id===task.id&&t.type==="image"?{...t,imageId:asset.id,alt:t.alt||file.name.replace(/\.[^.]+$/,"")}:t)}));}
+    try{const asset=await prepareImage(file);setDraft(s=>({...s,tasks:s.tasks?.map(t=>t.id===task.id&&t.type==="image"?{...t,imageId:asset.id}:t)}));}
     catch(e){toast(e instanceof Error?e.message:"Не удалось прочитать изображение");}
     finally{setUploading(false);}
   };

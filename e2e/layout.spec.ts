@@ -1,5 +1,6 @@
 import {test,expect} from "@playwright/test";
 import {importLesson} from "./helpers";
+test.use({hasTouch:true});
 for(const size of [{width:1920,height:1080},{width:1366,height:768},{width:1024,height:768}]) {
   test("readable question and reachable touch controls at "+size.width+"x"+size.height,async({page},testInfo)=>{
     await page.setViewportSize(size);
