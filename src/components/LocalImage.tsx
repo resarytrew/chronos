@@ -28,5 +28,5 @@ export function useImageSources(tasks:ActivityTask[]):Record<string,string> {
 export default function LocalImage({id,alt,caption,className}:{id:string;alt:string;caption?:string;className?:string}) {
   const [asset,setAsset]=useState<ImageAsset|null|undefined>();
   useEffect(()=>{let mounted=true;setAsset(undefined);void api.getImage(id).then(a=>{if(mounted)setAsset(a??null);}).catch(()=>{if(mounted)setAsset(null);});return()=>{mounted=false;};},[id]);
-  return <figure className={className}>{asset?<img src={asset.dataUrl} alt={alt} className="mx-auto max-h-[35vh] max-w-full rounded-xl object-contain"/>:<p role="status">{asset===null?"Изображение недоступно. Восстановите набор из файла.":"Загрузка изображения…"}</p>}{caption&&<figcaption className="mt-2 text-base text-mute">{caption}</figcaption>}</figure>;
+  return <figure className={className}>{asset?<img src={asset.dataUrl} alt={alt} onError={()=>setAsset(null)} className="mx-auto max-h-[35vh] max-w-full rounded-xl object-contain"/>:<p role="status">{asset===null?"Изображение недоступно. Восстановите набор из файла.":"Загрузка изображения…"}</p>}{caption&&<figcaption className="mt-2 text-base text-mute">{caption}</figcaption>}</figure>;
 }
