@@ -40,6 +40,7 @@ export function QuickPasteDialog({
 
   const rows = useMemo(() => parsePasted(text), [text]);
   const noDate = rows.filter((r) => !r.dateText).length;
+  const duplicates=new Set(rows.filter((r,i)=>rows.findIndex(x=>x.title.trim().toLowerCase()===r.title.trim().toLowerCase())!==i).map(r=>r.title.trim().toLowerCase()));
 
   return (
     <Dialog
@@ -101,7 +102,7 @@ export function QuickPasteDialog({
           <div className="mb-2 flex items-center justify-between">
             <span className="label-mute">Предпросмотр</span>
             <span className="text-sm text-mute">
-              {rows.length} стр.{noDate > 0 ? ` · без даты: ${noDate}` : ""}
+              {rows.length} стр.{noDate > 0 ? ` · без даты: ${noDate}` : ""}{duplicates.size ? " · возможные повторы: "+duplicates.size : ""}
             </span>
           </div>
           {rows.length === 0 ? (
@@ -113,7 +114,7 @@ export function QuickPasteDialog({
                   <tr key={i} className="border-t border-line-2">
                     <td className="w-8 py-1.5 pr-2 text-mute tabular-nums">{i + 1}</td>
                     <td className={`w-32 py-1.5 pr-3 font-medium tabular-nums ${r.dateText ? "" : "text-[#9a6a1a]"}`}>{r.dateText || "— нет даты"}</td>
-                    <td className="py-1.5">{r.title}</td>
+                    <td className="py-1.5">{r.title || "— нет события"}{duplicates.has(r.title.trim().toLowerCase()) && <span className="ml-2 text-[#9a6a1a]">Возможный повтор</span>}</td>
                   </tr>
                 ))}
               </tbody>

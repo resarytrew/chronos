@@ -1,0 +1,25 @@
+import { test, expect } from "@playwright/test";
+test("content search, metadata, favorites and portable file round trip",async({page})=>{
+  await page.goto("./");
+  await page.getByRole("button",{name:"Быстрый диктант"}).click();
+  await page.getByRole("dialog").locator("textarea").fill("1380 г.\tКуликовская битва\n988\tКрещение Руси");
+  await page.getByRole("button",{name:"Добавить 2",exact:true}).click();
+  await page.getByRole("textbox",{name:"Название сценария"}).fill("Урок Русь");
+  await page.getByRole("textbox",{name:"Класс",exact:true}).fill("6А");
+  await page.getByRole("textbox",{name:"Раздел истории",exact:true}).fill("Древняя Русь");
+  await expect(page.getByText("изменения сохранены",{exact:true})).toBeVisible();
+  await page.getByRole("link",{name:"Сценарии",exact:true}).click();
+  await page.getByRole("textbox",{name:"Поиск по названию и содержимому"}).fill("Куликовская");
+  await expect(page.getByText("Урок Русь",{exact:true})).toBeVisible();
+  await page.getByRole("combobox",{name:"Фильтр по классу"}).selectOption("6А");
+  await page.getByRole("button",{name:"В избранное",exact:true}).click();
+  await page.getByRole("combobox",{name:"Порядок наборов"}).selectOption("favorites");
+  await expect(page.getByText("Урок Русь",{exact:true})).toBeVisible();
+  const download=page.waitForEvent("download");
+  await page.getByRole("button",{name:"Экспорт",exact:true}).click();
+  const path=await(await download).path();
+  await page.locator('input[type="file"]').first().setInputFiles(path!);
+  await expect(page.getByText(/Наборов: 1, показов: 0, изображений: 0/)).toBeVisible();
+  await page.getByRole("button",{name:"Объединить",exact:true}).click();
+  await expect(page.getByText("Урок Русь",{exact:true})).toHaveCount(2);
+});

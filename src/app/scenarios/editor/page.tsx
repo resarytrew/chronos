@@ -16,7 +16,7 @@ function EditorContent() {
       setScenario(null);
       return;
     }
-    void api.getScenario(id).then(setScenario).catch(() => setScenario(null));
+    void api.getScenario(id).then(s=>{setScenario(s);if(s)void api.markOpened(id).catch(()=>{});}).catch(() => setScenario(null));
   }, [id]);
 
   if (scenario === undefined) return <div className="p-8 text-mute">Открываем сценарий…</div>;

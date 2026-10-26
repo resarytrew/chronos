@@ -19,7 +19,8 @@ import {
   type ParsedLine,
 } from "@/lib/utils";
 import { eraByYear } from "@/lib/eras";
-import { api, printEventList, speechSupported } from "@/lib/client";
+import { api, printEventList, printWorksheet, speechSupported } from "@/lib/client";
+import MetadataFields from "./MetadataFields";
 import { useApp } from "@/components/AppProvider";
 import { Confirm, Icons, Menu } from "@/components/ui";
 import EventRow from "./EventRow";
@@ -46,6 +47,7 @@ export default function ScenarioEditor({ initial, autoPaste }: { initial: Scenar
   const { startRun, toast } = useApp();
 
   const [title, setTitle] = useState(initial.title);
+  const [meta,setMeta]=useState({className:initial.className,section:initial.section,description:initial.description});
   const [events, setEvents] = useState<EventItem[]>(initial.events);
   const [settings, setSettings] = useState<ScenarioSettings>(initial.settings);
   const [selection, setSelection] = useState<Selection>({ type: "all" });
@@ -81,14 +83,21 @@ export default function ScenarioEditor({ initial, autoPaste }: { initial: Scenar
     const t = window.setTimeout(async () => {
       setSaveState("saving");
       try {
-        await api.updateScenario(initial.id, { title, settings, events });
+        const saved=await api.updateScenario(initial.id, { title, settings, events, ...meta });
+        if(!saved) throw new Error("Набор удалён");
         if (seq === saveSeq.current) setSaveState("saved");
       } catch {
         if (seq === saveSeq.current) setSaveState("error");
       }
     }, 800);
     return () => window.clearTimeout(t);
-  }, [title, settings, events, initial.id]);
+  }, [title, settings, events, initial.id, meta]);
+
+  const saveNow=async()=>{
+    const seq=++saveSeq.current;setSaveState("saving");
+    try{const saved=await api.updateScenario(initial.id,{title,settings,events,...meta});if(!saved)throw new Error("Набор удалён");if(seq===saveSeq.current)setSaveState("saved");return saved;}
+    catch(e){setSaveState("error");throw e;}
+  };
 
   useEffect(() => {
     const onLeave = (e: BeforeUnloadEvent) => {
@@ -206,19 +215,20 @@ export default function ScenarioEditor({ initial, autoPaste }: { initial: Scenar
 
   /* ---------- actions ---------- */
 
-  const start = () => {
+  const start = async () => {
     const plan = buildRunPlan({ scenarioId: initial.id, title, events, settings, selection });
     if (!plan.items.length) {
       toast("Нет событий для показа");
       return;
     }
-    startRun(plan);
+    try{await saveNow();await api.markOpened(initial.id);startRun(plan);}catch{toast("Не удалось сохранить набор. Повторите сохранение перед показом.");}
   };
 
   const duplicate = async () => {
     const copy = await api.createScenario({
       title: `${title} (копия)`,
       settings,
+      ...meta,
       events: events.map((e) => ({ dateText: e.dateText, title: e.title, era: e.era })),
     });
     toast("Сценарий скопирован");
@@ -239,10 +249,12 @@ export default function ScenarioEditor({ initial, autoPaste }: { initial: Scenar
       onClick: async () => toast((await copyText(`${title}\n${eventsToText(usable)}`)) ? "Список скопирован" : "Не удалось скопировать"),
     },
     { label: "Печать списка дат", icon: <Icons.Print size={20} />, onClick: () => printEventList(title, usable) || toast("Разрешите всплывающие окна") },
+    { label: "Печать листа заданий", icon: <Icons.Print size={20} />, onClick: () => printWorksheet(title, buildRunPlan({scenarioId:initial.id,title,events,settings,selection}).items, false) || toast("Разрешите всплывающие окна") },
+    { label: "Печать ключа ответов", icon: <Icons.Print size={20} />, onClick: () => printWorksheet(title, buildRunPlan({scenarioId:initial.id,title,events,settings,selection}).items, true) || toast("Разрешите всплывающие окна") },
     {
       label: "Экспорт в JSON",
       icon: <Icons.Download size={20} />,
-      onClick: () => downloadJson(`${title}.json`, [{ title, settings, events: events.map((e) => ({ dateText: e.dateText, title: e.title, era: e.era })) }]),
+      onClick: async () => {try{await saveNow();downloadJson(title+".json",await api.exportPackage([initial.id]));}catch{toast("Не удалось экспортировать набор");}},
     },
     { label: "Удалить сценарий", icon: <Icons.Trash size={20} />, onClick: () => setDeleteOpen(true), danger: true },
   ];
@@ -263,6 +275,7 @@ export default function ScenarioEditor({ initial, autoPaste }: { initial: Scenar
               <span>{eventsWord(events.length)}</span>
               <span>·</span>
               <span className={saveState === "error" ? "text-[#8c3f3f]" : ""}>{saveLabel}</span>
+              {saveState === "error" && <button className="btn btn-sm" onClick={()=>void saveNow().catch(()=>toast("Не удалось сохранить набор"))}>Повторить сохранение</button>}
               {warnings.map((w) => (
                 <span key={w.kind} className="inline-flex items-center gap-1 rounded-full border border-[#c9a86a] px-2.5 py-0.5 text-sm text-[#7a5a14]">
                   <Icons.Alert size={14} />
@@ -281,6 +294,7 @@ export default function ScenarioEditor({ initial, autoPaste }: { initial: Scenar
           />
         </div>
 
+        <MetadataFields value={meta} onChange={patch=>setMeta(m=>({...m,...patch}))}/>
         <div className="mt-5 flex flex-wrap gap-2">
           <button type="button" className="btn btn-sm" onClick={() => setEvents((p) => sortByDate(p))} disabled={events.length < 2}>
             <Icons.Sort size={18} />

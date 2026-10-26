@@ -214,6 +214,18 @@ export function printAnswers(title: string, items: RunItem[], meta?: string) {
   return openPrintWindow(`${title} — ответы`, html);
 }
 
+/** Separate pupil worksheet or answer key; browser offers paper and PDF. */
+export function printWorksheet(title: string, items: RunItem[], answers: boolean, images: Record<string,string> = {}) {
+  const rows=items.map(it=>{
+    const task=it.task;
+    const image=task?.type==="image" && images[task.imageId] ? '<img style="max-width:100%;max-height:95mm" src="'+images[task.imageId]+'" alt="'+escapeHtml(task.alt)+'">' : "";
+    const options=task?.type==="choice" && !answers ? "<ol>"+task.options.map(o=>"<li>"+escapeHtml(o)+"</li>").join("")+"</ol>" : "";
+    const cards=task?.type==="sequence" && !answers ? "<ul>"+[...task.cards].reverse().map(c=>"<li>"+escapeHtml(c.text)+"</li>").join("")+"</ul>" : "";
+    return "<li><b>"+escapeHtml(questionText(it))+"</b>"+image+options+cards+(answers?"<p>"+escapeHtml(answerText(it))+"</p>"+(task?.explanation?"<p>"+escapeHtml(task.explanation)+"</p>":""):'<p>Ответ: __________________________________________________</p>')+"</li>";
+  }).join("");
+  return openPrintWindow(title+" — "+(answers?"ответы":"задания"),"<h1>"+escapeHtml(title)+"</h1><div class=meta>"+(answers?"Ключ для учителя":"Фамилия: ____________________ Класс: ______")+"</div><ol>"+rows+"</ol>");
+}
+
 /** Plain list of a scenario (date — event), useful as a cheat-sheet or a handout to learn. */
 export function printEventList(title: string, items: EventItem[]) {
   const html = `<h1>${escapeHtml(title)}</h1><div class="meta">Список дат для запоминания</div><table><tr><th style="width:28%">Дата</th><th>Событие</th></tr>${items

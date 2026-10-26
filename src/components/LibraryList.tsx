@@ -1,19 +1,24 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ScenarioFull } from "@/lib/types";
 import { buildRunPlan, eventsWord } from "@/lib/utils";
 import { ERA_MAP } from "@/lib/eras";
 import { api } from "@/lib/client";
 import { useApp } from "./AppProvider";
 import { Dialog, Icons } from "./ui";
+import ScenarioFilters, { EMPTY_FILTERS, filterScenarios } from "./ScenarioFilters";
 
 export default function LibraryList({ items }: { items: ScenarioFull[] }) {
   const router = useRouter();
   const { toast, startRun } = useApp();
   const [preview, setPreview] = useState<ScenarioFull | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [catalog,setCatalog]=useState(items);
+  const [filters,setFilters]=useState(EMPTY_FILTERS);
+  useEffect(()=>{void api.listScenariosFull("library").then(setCatalog);},[items]);
+  const favorite=async(s:ScenarioFull)=>{try{await api.setPreference(s.id+":favorite",!s.favorite);setCatalog(await api.listScenariosFull("library"));}catch{toast("Не удалось сохранить избранное");}};
 
   const addToMine = async (s: ScenarioFull) => {
     setBusyId(s.id);
@@ -21,6 +26,7 @@ export default function LibraryList({ items }: { items: ScenarioFull[] }) {
       const copy = await api.createScenario({
         title: s.title,
         description: s.description,
+        className:s.className,section:s.section,activityType:s.activityType,tasks:s.tasks,
         settings: s.settings,
         events: s.events.map((e) => ({ dateText: e.dateText, title: e.title, era: e.era })),
       });
@@ -32,6 +38,7 @@ export default function LibraryList({ items }: { items: ScenarioFull[] }) {
   };
 
   const runNow = (s: ScenarioFull) => {
+    void api.markOpened(s.id).then(()=>api.listScenariosFull("library").then(setCatalog));
     startRun(buildRunPlan({ scenarioId: null, title: s.title, events: s.events, settings: s.settings, selection: { type: "all" } }));
   };
 
@@ -40,13 +47,15 @@ export default function LibraryList({ items }: { items: ScenarioFull[] }) {
       <h1 className="text-[2.2rem] font-bold tracking-tight sm:text-[2.6rem]">Библиотека</h1>
       <p className="mt-1 text-mute">Готовые наборы дат. Добавьте набор к себе, чтобы редактировать, или проведите сразу с настройками по умолчанию.</p>
 
+      <ScenarioFilters items={catalog} value={filters} onChange={setFilters}/>
+      {!filterScenarios(catalog,filters).length && <p className="mt-5 text-mute">Ничего не найдено. Измените фильтры.</p>}
       <div className="mt-6 grid gap-3 md:grid-cols-2">
-        {items.map((s) => {
+        {filterScenarios(catalog,filters).map((s) => {
           const eras = Array.from(new Set(s.events.map((e) => e.era).filter(Boolean))) as string[];
           return (
             <div key={s.id} className="card flex flex-col p-5">
               <div className="flex-1">
-                <div className="text-[1.25rem] font-semibold leading-snug">{s.title}</div>
+                <div className="flex items-center justify-between gap-2"><div className="text-[1.25rem] font-semibold leading-snug">{s.title}</div><button className="btn btn-icon" aria-label={s.favorite?"Убрать из избранного":"В избранное"} onClick={()=>favorite(s)}>{s.favorite?"★":"☆"}</button></div>
                 <div className="mt-1 text-[0.95rem] text-mute">{s.description}</div>
                 <div className="mt-3 flex items-center gap-3 text-[0.95rem] text-mute">
                   <span>{eventsWord(s.events.length)}</span>

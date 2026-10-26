@@ -21,3 +21,20 @@ test("unknown backup version is rejected before replacing existing data", async 
   await assert.rejects(storage.importAll({ format: "chronos-backup", version: 99, scenarios: [], sessions: [] }, "replace"));
   assert.deepEqual(await storage.listScenarios(), before);
 });
+
+test("portable package preserves media and legacy imports; damaged replacement is atomic", async () => {
+  const image={id:"test-image",dataUrl:"data:image/png;base64,aGVsbG8="};
+  await storage.putImage(image);
+  const s=await storage.createScenario({title:"Портрет",activityType:"image",className:"7А",section:"Россия",tasks:[{id:"task-image",type:"image",prompt:"Кто изображён?",answer:"Пётр I",imageId:image.id,alt:"Портрет"}]});
+  const file=await storage.exportPackage([s.id]);
+  assert.equal(file.images.length,1);
+  const count=(await storage.listScenarios()).length;
+  await assert.rejects(storage.importAll({...file,images:[]},"replace"));
+  assert.equal((await storage.listScenarios()).length,count);
+  await storage.importAll(file,"merge");
+  assert.equal((await storage.listScenarios()).filter(x=>x.title==="Портрет").length,2);
+  await storage.importAll([{title:"Старый формат",events:[{date:"1380 г.",title:"Куликовская битва"}]}],"merge");
+  const legacy=(await storage.listScenariosFull()).find(x=>x.title==="Старый формат");
+  assert.equal(legacy?.events[0].dateText,"1380 г.");
+  assert.equal(legacy?.activityType,"dictation");
+});

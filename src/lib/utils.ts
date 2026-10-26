@@ -111,23 +111,24 @@ export interface ParsedLine {
 
 /** Parses one pasted line into date + title. Returns null for lines that don't look like an event. */
 export function parseLine(raw: string): ParsedLine | null {
-  let line = raw.replace(/^\s*(?:\d{1,3}[.)]\s+|[•\-*–—]\s+)/, "").trim();
-  if (!line) return null;
-  line = line.replace(/\s+/g, " ");
+  let line = raw.replace(/^\s*(?:\d{1,3}[.)]\s+|[•\-*–—]\s+)/, "").replace(/^ +| +$/g,"");
+  if (!line.trim()) return null;
   const tab = line.split("\t");
   if (tab.length >= 2) {
     const a = tab[0].trim();
     const b = tab.slice(1).join(" ").trim();
-    if (parseYear(a) !== null) return { dateText: normalizeDate(a), title: b };
-    if (parseYear(b) !== null) return { dateText: normalizeDate(b), title: a };
+    if (parseYear(a) !== null) return { dateText: a, title: b };
+    if (parseYear(b) !== null) return { dateText: b, title: a };
+    return {dateText:a,title:b};
   }
+  line = line.replace(/\s+/g, " ");
   const lead = line.match(LEADING_DATE);
   if (lead && parseYear(lead[1]) !== null && lead[2].trim()) {
-    return { dateText: normalizeDate(lead[1]), title: lead[2].trim().replace(/^[-—–:.]\s*/, "") };
+    return { dateText: lead[1].trim(), title: lead[2].trim().replace(/^[-—–:.]\s*/, "") };
   }
   const trail = line.match(TRAILING_DATE);
   if (trail && parseYear(trail[2]) !== null && trail[1].trim()) {
-    return { dateText: normalizeDate(trail[2]), title: trail[1].trim() };
+    return { dateText: trail[2].trim(), title: trail[1].trim() };
   }
   return { dateText: "", title: line };
 }

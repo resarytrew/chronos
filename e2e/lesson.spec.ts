@@ -3,7 +3,7 @@ test('offline lesson resumes paused and held keys do not skip cards', async ({ p
   await page.goto('./');
   await expect(page.getByText('Готово к работе без интернета', {exact:true})).toBeVisible();
   await page.getByRole('button', {name:'Быстрый диктант'}).click();
-  await page.getByRole('textbox').last().fill('988 — Крещение Руси\n1380 — Куликовская битва\n1613 — Воцарение Михаила Романова');
+  await page.getByRole('dialog').locator('textarea').fill('988 — Крещение Руси\n1380 — Куликовская битва\n1613 — Воцарение Михаила Романова');
   await page.getByRole('button', {name:'Добавить 3', exact:true}).click();
   await expect(page.getByText('изменения сохранены', {exact:true})).toBeVisible();
   await page.getByText('Вручную', {exact:true}).click();
