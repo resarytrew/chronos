@@ -9,6 +9,7 @@ test("local image, answer and metadata transfer to a clean browser and work offl
   await page.getByRole("textbox",{name:"Ответ 1",exact:true}).fill("Учебная карта");
   const png=await page.evaluate(()=>{const c=document.createElement("canvas");c.width=2000;c.height=1000;const x=c.getContext("2d")!;x.fillStyle="#f4f4f1";x.fillRect(0,0,2000,1000);x.fillStyle="#111";x.font="80px sans-serif";x.fillText("Карта",800,500);return c.toDataURL("image/png").split(",")[1];});
   await page.getByLabel("Изображение",{exact:true}).setInputFiles({name:"map.png",mimeType:"image/png",buffer:Buffer.from(png,"base64")});
+  await page.getByRole("button",{name:"Сохранить изображение",exact:true}).click();
   await page.getByRole("textbox",{name:"Описание изображения",exact:true}).fill("Учебная схема");
   await page.getByRole("textbox",{name:"Подпись изображения",exact:true}).fill("Материал для обсуждения");
   await page.getByRole("textbox",{name:"Источник изображения",exact:true}).fill("https://example.com/source");

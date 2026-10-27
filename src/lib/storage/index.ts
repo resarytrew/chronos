@@ -205,6 +205,7 @@ export const storage = {
   async updateScenario(
     id: string,
     input: ScenarioMeta & { title?: string; description?: string | null; settings?: ScenarioSettings; events?: EventItem[]; tasks?: ActivityTask[] },
+    image?: ImageAsset,
   ): Promise<ScenarioFull | null> {
     return enqueue(id, async () => {
       const current = await db.scenarios.get(id);
@@ -218,7 +219,7 @@ export const storage = {
         events: input.events === undefined ? current.events : cleanEvents(input.events),
         updatedAt: now(),
       };
-      await db.transaction("rw", db.scenarios, db.preferences, async () => {await db.scenarios.put(updated);await db.preferences.put({id:"modifiedAt",value:now()});});
+      await db.transaction("rw", [db.scenarios, db.preferences, db.images], async () => {if(image)await db.images.put(image);await db.scenarios.put(updated);await db.preferences.put({id:"modifiedAt",value:now()});});
       return updated;
     });
   },

@@ -4,7 +4,7 @@ import type { ActivityTask, TaskResponse } from "@/lib/types";
 import { taskAnswer } from "@/lib/activities";
 import LocalImage from "./LocalImage";
 
-export default function TaskBoard({task,response,onChange,disabled=false}:{task:ActivityTask;response:TaskResponse;onChange:(r:TaskResponse)=>void;disabled?:boolean}) {
+export default function TaskBoard({task,response,onChange,disabled=false,onImageInteraction}:{task:ActivityTask;response:TaskResponse;onChange:(r:TaskResponse)=>void;disabled?:boolean;onImageInteraction?:()=>void}) {
   const [drag,setDrag]=useState<string|null>(null);
   const order=response.order??[];
   const checked=Boolean(response.checked);
@@ -17,7 +17,7 @@ export default function TaskBoard({task,response,onChange,disabled=false}:{task:
   const correct=task.type==="sequence"?task.cards.every((c,i)=>order[i]===c.id):task.type==="choice"?response.selected===task.correctIndex:true;
   return <div className="mx-auto w-full max-w-5xl space-y-4 py-4 text-left">
     <h2 className="task-prompt text-center text-[clamp(1.6rem,3.3vw,3rem)] font-semibold leading-tight break-words">{task.prompt}</h2>
-    {task.type==="image"&&<LocalImage id={task.imageId} alt={task.alt} caption={task.caption}/>}
+    {task.type==="image"&&<LocalImage id={task.imageId} alt={task.alt} caption={task.caption} onViewerOpen={onImageInteraction} onFailure={onImageInteraction}/>}
     {task.type==="sequence"&&<ol className="space-y-2">{order.map((id,i)=>{
       const card=task.cards.find(c=>c.id===id);
       return <li key={id} draggable={!disabled} onDragStart={()=>setDrag(id)} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();if(drag)move(drag,i);setDrag(null);}} onDragEnd={()=>setDrag(null)} className="task-card flex items-center gap-3 rounded-2xl border p-3">

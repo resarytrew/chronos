@@ -278,6 +278,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
 
   const handlersRef = useRef<(e: KeyboardEvent) => void>(() => {});
   handlersRef.current = (e: KeyboardEvent) => {
+    if(document.querySelector(".image-viewer[open]"))return;
     const tag = (e.target as HTMLElement | null)?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
     if (e.repeat) { e.preventDefault(); return; }
@@ -451,7 +452,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
           <div
             className="flex flex-1 flex-col items-center justify-center px-8 text-center"
           >
-            {current.task&&current.task.type!=="terms" ? <TaskBoard key={current.id} task={current.task} response={responses[current.id]??{}} disabled={paused||exitAsk} onChange={r=>setResponses(p=>({...p,[current.id]:r}))}/> : <>
+            {current.task&&current.task.type!=="terms" ? <TaskBoard key={current.id} task={current.task} response={responses[current.id]??{}} disabled={paused||exitAsk} onImageInteraction={()=>{setPaused(true);stopSpeaking();}} onChange={r=>setResponses(p=>({...p,[current.id]:r}))}/> : <>
             <div className="mb-6 text-[1.1rem] font-semibold uppercase tracking-[0.14em]" style={{ color: "var(--b-mute)" }}>
               {terminology?(current.ask==="term"?"Запишите понятие":"Запишите определение"):current.ask === "date" ? "Запишите дату" : "Запишите событие"}
             </div>

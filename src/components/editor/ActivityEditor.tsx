@@ -1,13 +1,14 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ActivityTask, ScenarioFull, StudyOrder } from "@/lib/types";
+import type { ActivityTask, ImageAsset, ScenarioFull, StudyOrder } from "@/lib/types";
 import { api, printWorksheet } from "@/lib/client";
 import { ACTIVITY_LABELS, newTask, scenarioPlan, taskError } from "@/lib/activities";
 import {buildTermsStudyPlan,parseTerms} from "@/lib/terms";
 import { downloadJson, uid } from "@/lib/utils";
 import { useApp } from "../AppProvider";
 import { Dialog, Icons, Seg, Toggle } from "../ui";
-import LocalImage, { prepareImage, useImageSources } from "../LocalImage";
+import LocalImage, { useImageSources } from "../LocalImage";
+import ImageUpload from "../ImageUpload";
 import MetadataFields from "./MetadataFields";
 
 export default function ActivityEditor({initial}:{initial:ScenarioFull}) {
@@ -21,6 +22,7 @@ export default function ActivityEditor({initial}:{initial:ScenarioFull}) {
   const pastedTerms=useMemo(()=>parseTerms(pasteText),[pasteText]);
   const first=useRef(true);
   const seq=useRef(0);
+  const saveTimer=useRef<number|undefined>(undefined);
   const tasks=draft.tasks??[];
   const sources=useImageSources(tasks);
   const type=draft.activityType??"qa";
@@ -36,6 +38,7 @@ export default function ActivityEditor({initial}:{initial:ScenarioFull}) {
     setState("dirty");
     const n=++seq.current;
     const timer=window.setTimeout(()=>{setState("saving");void api.updateScenario(initial.id,draft).then(saved=>{if(!saved)throw new Error("Набор удалён");if(n===seq.current)setState("saved");}).catch(()=>{if(n===seq.current)setState("error");});},700);
+    saveTimer.current=timer;
     return()=>window.clearTimeout(timer);
   },[draft,initial.id]);
   useEffect(()=>{
@@ -49,11 +52,12 @@ export default function ActivityEditor({initial}:{initial:ScenarioFull}) {
     setDraft(s=>({...s,tasks:s.tasks?.map(t=>t.id===task.id?{...t,...changes} as ActivityTask:t)}));
   };
   const moveTask=(i:number,d:number)=>{const a=[...tasks];if(i+d<0||i+d>=a.length)return;[a[i],a[i+d]]=[a[i+d],a[i]];patch({tasks:a});};
-  const image=async(task:Extract<ActivityTask,{type:"image"}>,file:File)=>{
-    setUploading(true);
-    try{const asset=await prepareImage(file);setDraft(s=>({...s,tasks:s.tasks?.map(t=>t.id===task.id&&t.type==="image"?{...t,imageId:asset.id}:t)}));}
-    catch(e){toast(e instanceof Error?e.message:"Не удалось прочитать изображение");}
-    finally{setUploading(false);}
+  const image=async(task:Extract<ActivityTask,{type:"image"}>,asset:ImageAsset)=>{
+    window.clearTimeout(saveTimer.current);++seq.current;
+    const next={...draft,tasks:tasks.map(t=>t.id===task.id&&t.type==="image"?{...t,imageId:asset.id}:t)};
+    const saved=await api.updateScenario(initial.id,next,asset);
+    if(!saved)throw new Error("Набор был удалён");
+    setDraft(s=>({...s,tasks:s.tasks?.map(t=>t.id===task.id&&t.type==="image"?{...t,imageId:asset.id}:t)}));setState("saved");
   };
   const run=async()=>{try{const saved=await save();const plan=scenarioPlan(saved);await api.markOpened(saved.id);startRun(plan);}catch(e){toast(e instanceof Error?e.message:"Не удалось начать показ");}};
   const study=async()=>{try{const saved=await save();const plan=buildTermsStudyPlan(saved,termStudyOrder);await api.markOpened(saved.id);openStudy(plan,termStudyOrder);}catch(e){toast(e instanceof Error?e.message:"Не удалось открыть понятия");}};
@@ -83,8 +87,7 @@ export default function ActivityEditor({initial}:{initial:ScenarioFull}) {
             <button className="btn" disabled={task.options.length>=4} onClick={()=>update({...task,options:[...task.options,""]})}>Добавить вариант</button>
           </>}
           {task.type==="image"&&<>
-            <label className="block">Изображение JPEG, PNG или WebP<input type="file" aria-label="Изображение" accept="image/jpeg,image/png,image/webp" className="field mt-1" disabled={uploading} onChange={e=>{if(e.target.files?.[0])void image(task,e.target.files[0]);e.target.value="";}}/></label>
-            {uploading&&<p role="status">Подготовка изображения…</p>}
+            <ImageUpload onSave={asset=>image(task,asset)} onBusyChange={setUploading}/>
             {task.imageId&&<LocalImage id={task.imageId} alt={task.alt} caption={task.caption}/>}
             <label className="block text-sm text-mute">Описание изображения<input className="field mt-1" aria-label="Описание изображения" value={task.alt} onChange={e=>update({...task,alt:e.target.value})}/></label>
             <label className="block text-sm text-mute">Подпись (видна ученикам)<input className="field mt-1" aria-label="Подпись изображения" value={task.caption??""} onChange={e=>update({...task,caption:e.target.value})}/></label>
