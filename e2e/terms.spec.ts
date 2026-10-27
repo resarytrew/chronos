@@ -86,11 +86,9 @@ test("term dictation supports automatic timing and manual override",async({page}
   await page.clock.fastForward(15000);
   await expect(page.locator(".b-question")).toHaveText(concepts[1]);
 });
-test("concept study reveals definitions, restores sequential order and works offline after transfer",async({page,browser},testInfo)=>{
+test("concept study reveals definitions and restores sequential order without lesson history",async({page},testInfo)=>{
   await createTerms(page);
   await page.getByRole("radio",{name:"Определение → понятие",exact:true}).click();
-  const download=page.waitForEvent("download");await page.getByRole("button",{name:"Экспорт набора",exact:true}).click();
-  const data=await readFile((await(await download).path())!);
   await page.getByRole("button",{name:"Изучать понятия",exact:true}).click();
   const board=page.locator(".board");
   await expect(board.getByRole("heading",{name:"Изучение понятий",exact:true})).toBeVisible();
@@ -113,12 +111,21 @@ test("concept study reveals definitions, restores sequential order and works off
   await page.keyboard.press("Escape");
   await expect(page.getByRole("radio",{name:"Определение → понятие",exact:true})).toHaveAttribute("aria-checked","true");
   await page.goto("history/");await expect(page.getByText("Пока пусто",{exact:true})).toBeVisible();
+});
+
+test("concept study works offline after transfer to a clean profile",async({page,browser})=>{
+  await createTerms(page);
+  const download=page.waitForEvent("download");await page.getByRole("button",{name:"Экспорт набора",exact:true}).click();
+  const data=await readFile((await(await download).path())!);
   const context=await browser.newContext();
   try {
     const second=await context.newPage();await second.goto("http://127.0.0.1:4173/chronos/");
     await expect(second.getByText("Готово к работе без интернета",{exact:true})).toBeVisible();
     await second.locator('input[type="file"]').first().setInputFiles({name:"terms.json",mimeType:"application/json",buffer:data});
     await second.getByRole("button",{name:"Объединить",exact:true}).click();
+    // Wait for the IndexedDB transaction before simulating an offline reload.
+    await expect(second.getByText("Добавлено наборов: 1, показов: 0",{exact:true})).toBeVisible();
+    await expect(second.getByText("Исторические понятия",{exact:true})).toBeVisible();
     await context.setOffline(true);await second.reload();
     await second.getByRole("button",{name:"Действия",exact:true}).click();
     await second.getByRole("button",{name:"Изучать понятия",exact:true}).click();
