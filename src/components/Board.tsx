@@ -52,6 +52,11 @@ export default function Board({ plan, initialPhase = "start", session = null, re
   const total = items.length;
   const s = plan.settings;
   const activity = items[0]?.task?.type;
+  const terminology=activity==="terms";
+  const interactive=Boolean(activity&&!terminology);
+  const studyLabel=terminology?"Изучение понятий":"Изучение дат";
+  const answerNoun=terminology?"определение":"дату";
+  const orderedStudy=terminology?"sequential":"chronological";
   const makeResponses = () => Object.fromEntries(items.filter(it=>it.task).map(it=>[it.id,{order:it.presentationOrder ?? initialOrder(it.task!)}]));
   const [responses,setResponses] = useState<Record<string,TaskResponse>>(()=>resume?.responses ?? makeResponses());
   const sources=useImageSources(items.flatMap(it=>it.task?[it.task]:[]));
@@ -301,7 +306,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
       setShade(true);
       return;
     }
-    if (code === "KeyA" && phase === "question" && !activity) {
+    if (code === "KeyA" && phase === "question" && !interactive) {
       e.preventDefault();
       setMode((m) => (m === "auto" ? "manual" : "auto"));
       setQuestionMs(0);
@@ -348,7 +353,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
   const remainingMs = Math.max(0, intervalMs - questionMs);
   const remainingSec = Math.ceil(remainingMs / 1000);
   const openedCount = revealed.size;
-  const bands = activity ? [] : gradingScale(total);
+  const bands = interactive ? [] : gradingScale(total);
   const changeStudyOrder=(order:StudyOrder)=>{
     setStudyOrderValue(order);
     setItems(orderStudyItems(items,order));
@@ -365,7 +370,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
   /* ---------- render ---------- */
 
   return (
-    <div className="board" data-theme={s.theme} data-scale={s.fontScale} role="application" aria-label={studying?"Изучение дат":"Показ диктанта"}>
+    <div className="board" data-theme={s.theme} data-scale={s.fontScale} data-subject={terminology?"terms":"dates"} role="application" aria-label={studying?studyLabel:terminology?"Терминологический диктант":"Показ диктанта"}>
       {shade && (
         <div className="b-shade" onClick={() => setShade(false)}>
           Шторка · нажмите, чтобы продолжить
@@ -389,7 +394,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
               {plan.title}
             </h1>
             <p className="mt-6 text-[1.25rem] sm:text-[1.5rem]" style={{ color: "var(--b-mute)" }}>
-              {total} {total === 1 ? "вопрос" : total < 5 ? "вопроса" : "вопросов"} · {activity ? ACTIVITY_LABELS[activity] : DIRECTION_LABEL[s.direction]} ·{" "}
+              {total} {total === 1 ? "вопрос" : total < 5 ? "вопроса" : "вопросов"} · {interactive ? ACTIVITY_LABELS[activity!] : DIRECTION_LABEL[s.direction]} ·{" "}
               {s.mode === "auto" ? `${s.intervalSec} сек на ответ` : "смена вручную"}
               {plan.repeat ? " · повтор порядка" : ""}
             </p>
@@ -398,10 +403,10 @@ export default function Board({ plan, initialPhase = "start", session = null, re
               Начать
             </button>
             <button type="button" className="b-btn mt-3" onClick={() => setPreview(!preview)}>Предпросмотр доски</button>
-            {preview && current && (current.task ? <TaskBoard task={current.task} response={responses[current.id]??{}} onChange={r=>setResponses(p=>({...p,[current.id]:r}))}/> : <div className="b-question mt-4">{questionText(current)}</div>)}
+            {preview && current && (current.task&&current.task.type!=="terms" ? <TaskBoard task={current.task} response={responses[current.id]??{}} onChange={r=>setResponses(p=>({...p,[current.id]:r}))}/> : <div className="b-question mt-4">{questionText(current)}</div>)}
             {total === 0 && (
               <p className="mt-4" style={{ color: "var(--b-mute)" }}>
-                В выборке нет событий с датой и названием.
+                В наборе нет заполненных заданий для показа.
               </p>
             )}
           </div>
@@ -446,9 +451,9 @@ export default function Board({ plan, initialPhase = "start", session = null, re
           <div
             className="flex flex-1 flex-col items-center justify-center px-8 text-center"
           >
-            {current.task ? <TaskBoard key={current.id} task={current.task} response={responses[current.id]??{}} disabled={paused||exitAsk} onChange={r=>setResponses(p=>({...p,[current.id]:r}))}/> : <>
+            {current.task&&current.task.type!=="terms" ? <TaskBoard key={current.id} task={current.task} response={responses[current.id]??{}} disabled={paused||exitAsk} onChange={r=>setResponses(p=>({...p,[current.id]:r}))}/> : <>
             <div className="mb-6 text-[1.1rem] font-semibold uppercase tracking-[0.14em]" style={{ color: "var(--b-mute)" }}>
-              {current.ask === "date" ? "Запишите дату" : "Запишите событие"}
+              {terminology?(current.ask==="term"?"Запишите понятие":"Запишите определение"):current.ask === "date" ? "Запишите дату" : "Запишите событие"}
             </div>
             <div key={index} className={`b-question ${current.ask === "event" ? "is-date" : ""}`} style={questionText(current).length > 100 ? { fontSize: "clamp(1.8rem, 4vw, 4rem)", maxWidth: "38ch" } : undefined}>
               {questionText(current)}
@@ -500,7 +505,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
               <button
                 type="button"
                 className="b-btn"
-                disabled={Boolean(activity)}
+                disabled={interactive}
                 onClick={() => {
                   setMode((m) => (m === "auto" ? "manual" : "auto"));
                   setQuestionMs(0);
@@ -570,7 +575,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
         <div className="flex flex-1 flex-col overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3 px-6 pt-4 pb-3">
             <div className="flex items-baseline gap-4">
-              <h2 className="text-[1.7rem] font-semibold tracking-tight">{studying?"Изучение дат":"Ответы"}</h2>
+              <h2 className="text-[1.7rem] font-semibold tracking-tight">{studying?studyLabel:"Ответы"}</h2>
               <span className="text-[1.1rem] tabular-nums" style={{ color: "var(--b-mute)" }}>
                 {openedCount} / {total} открыто
               </span>
@@ -613,9 +618,9 @@ export default function Board({ plan, initialPhase = "start", session = null, re
           </div>
           {studying&&<div className="flex flex-wrap items-center gap-2 px-6 pb-3">
             <span className="mr-auto truncate text-lg" title={plan.title}>{plan.title}</span>
-            <button className="b-btn" data-active={studyOrderValue==="chronological"} aria-pressed={studyOrderValue==="chronological"} onClick={()=>changeStudyOrder("chronological")}>По хронологии</button>
+            <button className="b-btn" data-active={studyOrderValue===orderedStudy} aria-pressed={studyOrderValue===orderedStudy} onClick={()=>changeStudyOrder(orderedStudy)}>{terminology?"Последовательно":"По хронологии"}</button>
             <button className="b-btn" data-active={studyOrderValue==="shuffled"} aria-pressed={studyOrderValue==="shuffled"} onClick={()=>changeStudyOrder("shuffled")}>Перемешать</button>
-            <button className="b-btn" disabled={!openedCount} onClick={()=>setRevealed(new Set())}>Скрыть все даты</button>
+            <button className="b-btn" disabled={!openedCount} onClick={()=>setRevealed(new Set())}>{terminology?"Скрыть все определения":"Скрыть все даты"}</button>
           </div>}
           <div className="b-progress">
             <div style={{ width: `${total ? (openedCount / total) * 100 : 0}%` }} />
@@ -642,7 +647,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
                       {i + 1}
                     </div>
                     <div className="rv-question leading-snug">
-                      {studying?<button type="button" className="rv-toggle" aria-label={(open?"Скрыть дату: ":"Открыть дату: ")+questionText(it)} aria-expanded={open} onClick={e=>{e.stopPropagation();setRevealed(prev=>{const next=new Set(prev);if(next.has(i))next.delete(i);else next.add(i);return next;});}}>{questionText(it)}</button>:questionText(it)}
+                      {studying?<button type="button" className="rv-toggle" aria-label={(open?"Скрыть ":"Открыть ")+answerNoun+": "+questionText(it)} aria-expanded={open} onClick={e=>{e.stopPropagation();setRevealed(prev=>{const next=new Set(prev);if(next.has(i))next.delete(i);else next.add(i);return next;});}}>{questionText(it)}</button>:questionText(it)}
                       {it.task?.type==="image" && <LocalImage id={it.task.imageId} alt={it.task.alt}/>}
                     </div>
                     <div className="rv-answer leading-snug">
@@ -691,9 +696,9 @@ export default function Board({ plan, initialPhase = "start", session = null, re
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3 border-t px-6 py-3" style={{ borderColor: "var(--b-line)" }}>
             <span className="text-[1rem]" style={{ color: "var(--b-mute)" }}>
-              {studying ? "Нажмите на строку, чтобы открыть или скрыть дату. Пробел или → — открыть следующую." : hardIds.size > 0
+              {studying ? terminology?"Нажмите на понятие, чтобы открыть или скрыть определение. Пробел или → — открыть следующее.":"Нажмите на строку, чтобы открыть или скрыть дату. Пробел или → — открыть следующую." : hardIds.size > 0
                 ? `Отмечено трудных: ${hardIds.size} — из них можно собрать «Работу над ошибками» в Истории`
-                : "Отмечайте трудные события флажком — потом соберёте из них новый диктант"}
+                : terminology?"Отмечайте трудные понятия флажком — потом соберёте из них новый диктант":"Отмечайте трудные события флажком — потом соберёте из них новый диктант"}
             </span>
             <div className="flex gap-2">
               {!studying&&<button type="button" className="b-btn" onClick={() => setPhase("finished")}>

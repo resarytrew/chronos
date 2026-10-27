@@ -1,8 +1,8 @@
-export type Direction = "event-to-date" | "date-to-event" | "mixed";
+export type Direction = "event-to-date" | "date-to-event" | "term-to-definition" | "definition-to-term" | "mixed";
 export type Mode = "auto" | "manual";
 export type BoardTheme = "light" | "dark";
 export type FontScale = "m" | "l" | "xl";
-export type StudyOrder = "chronological" | "shuffled";
+export type StudyOrder = "chronological" | "sequential" | "shuffled";
 
 export interface ScenarioSettings {
   intervalSec: number;
@@ -34,7 +34,7 @@ export function withDefaults(s?: Partial<ScenarioSettings> | null): ScenarioSett
     ...v,
     intervalSec: Number.isFinite(v.intervalSec) ? Math.max(3,Math.min(30,Math.round(v.intervalSec))) : 7,
     mode: v.mode === "manual" ? "manual" : "auto",
-    direction: ["event-to-date","date-to-event","mixed"].includes(v.direction) ? v.direction : "event-to-date",
+    direction: ["event-to-date","date-to-event","term-to-definition","definition-to-term","mixed"].includes(v.direction) ? v.direction : "event-to-date",
     theme: v.theme === "dark" ? "dark" : "light",
     fontScale: ["m","l","xl"].includes(v.fontScale) ? v.fontScale : "l",
     shuffle:Boolean(v.shuffle),countdown:Boolean(v.countdown),voice:Boolean(v.voice),beep:Boolean(v.beep),
@@ -84,9 +84,10 @@ export interface ScenarioFull extends ScenarioMeta {
 }
 
 /** What students have to write down for this card. */
-export type Ask = "date" | "event";
+export type Ask = "date" | "event" | "term" | "definition";
 
 export interface RunItem {
+  studyIndex?: number;
   task?: ActivityTask;
   presentationOrder?: string[];
   id: string;
@@ -139,9 +140,11 @@ export interface ActiveRun {
   startedAt: string;
 }
 
-export type ActivityType = "dictation" | "sequence" | "qa" | "choice" | "image";
+export type ActivityType = "dictation" | "terms" | "sequence" | "qa" | "choice" | "image";
 interface TaskBase { id: string; prompt: string; explanation?: string }
 export type ActivityTask =
+  /** For terms, prompt is the concept and answer is its definition. */
+  | (TaskBase & { type: "terms"; answer: string })
   | (TaskBase & { type: "sequence"; cards: { id: string; text: string }[] })
   | (TaskBase & { type: "qa"; answer: string })
   | (TaskBase & { type: "choice"; options: string[]; correctIndex: number })

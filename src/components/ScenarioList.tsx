@@ -6,6 +6,7 @@ import type { ActivityType, ScenarioSummary } from "@/lib/types";
 import { downloadJson, fmtDate, buildStudyPlan } from "@/lib/utils";
 import { api } from "@/lib/client";
 import { scenarioPlan, ACTIVITY_LABELS, ENABLED_ACTIVITIES } from "@/lib/activities";
+import {buildTermsStudyPlan} from "@/lib/terms";
 import type { TransferFile } from "@/lib/transfer";
 import { useApp } from "./AppProvider";
 import { Confirm, Icons, Menu } from "./ui";
@@ -30,7 +31,7 @@ export default function ScenarioList({ initial }: { initial: ScenarioSummary[] }
   const create=async(quick:boolean)=>{
     setBusy(true);
     try {
-      const s=await api.createScenario({title:quick?"Новый диктант":"Новая тема",activityType:quick?"dictation":activityType,settings:activityType==="dictation"?undefined:{mode:"manual",voice:false}});
+      const s=await api.createScenario({title:quick?"Новый диктант":"Новая тема",activityType:quick?"dictation":activityType,settings:quick||activityType==="dictation"?undefined:activityType==="terms"?{mode:"manual",direction:"term-to-definition",voice:false}:{mode:"manual",voice:false}});
       router.push("/scenarios/editor/?id="+s.id+(quick?"&paste=1":""));
     } catch(e) { fail(e); } finally {setBusy(false);}
   };
@@ -46,9 +47,10 @@ export default function ScenarioList({ initial }: { initial: ScenarioSummary[] }
   };
   const study=async(id:string)=>{
     try{const s=await api.getScenario(id);if(!s)return;
-      const plan=buildStudyPlan({scenarioId:s.id,title:s.title,events:s.events,settings:s.settings,selection:{type:"all"}},"chronological");
-      if(!plan.items.length)throw new Error("В наборе нет заполненных дат");
-      await api.markOpened(id);openStudy(plan,"chronological",()=>{void reload();});
+      const terms=s.activityType==="terms";
+      const plan=terms?buildTermsStudyPlan(s,"sequential"):buildStudyPlan({scenarioId:s.id,title:s.title,events:s.events,settings:s.settings,selection:{type:"all"}},"chronological");
+      if(!plan.items.length)throw new Error(terms?"В наборе нет заполненных понятий":"В наборе нет заполненных дат");
+      await api.markOpened(id);openStudy(plan,terms?"sequential":"chronological",()=>{void reload();});
     }catch(e){fail(e);}
   };
   const duplicate=async(id:string)=>{
@@ -108,6 +110,7 @@ export default function ScenarioList({ initial }: { initial: ScenarioSummary[] }
         <Menu trigger={<button className="btn btn-ghost btn-icon" aria-label="Действия"><Icons.More/></button>} items={[
           {label:"Открыть",onClick:()=>router.push("/scenarios/editor/?id="+s.id)},
           ...(!s.activityType||s.activityType==="dictation"?[{label:"Изучать даты",onClick:()=>{void study(s.id);}}]:[]),
+          ...(s.activityType==="terms"?[{label:"Изучать понятия",onClick:()=>{void study(s.id);}}]:[]),
           {label:"Дублировать",onClick:()=>duplicate(s.id)},
           {label:"Экспорт набора",onClick:async()=>{try{downloadJson(s.title+".json",await api.exportPackage([s.id]));}catch(e){fail(e);}}},
           {label:"Удалить",onClick:()=>setToDelete(s),danger:true},

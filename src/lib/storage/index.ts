@@ -283,7 +283,7 @@ export const storage = {
     const scenarios = ids ? (await db.scenarios.bulkGet(ids)).filter((s): s is StoredScenario => Boolean(s)) : await db.scenarios.toArray();
     const referenced = imageIds({scenarios,sessions:[],activeRuns:[]});
     const images = (await db.images.bulkGet([...referenced])).filter((i): i is ImageAsset=>Boolean(i));
-    return {format:"chronos-package",version:2,exportedAt:now(),scenarios,sessions:[],images,preferences:[],activeRuns:[]};
+    return {format:"chronos-package",version:3,exportedAt:now(),scenarios,sessions:[],images,preferences:[],activeRuns:[]};
   },
   async noteBackupExport() { await db.preferences.put({id:"backupExportedAt",value:now()}); },
   async backupStatus(): Promise<{exportedAt: string | null; changed: boolean}> {
@@ -296,7 +296,7 @@ export const storage = {
   async exportAll(): Promise<BackupFile> {
     await Promise.all([...saveQueues.values()]);
     return db.transaction("r", [db.scenarios,db.sessions,db.images,db.preferences,db.activeRuns], async () => ({
-      format:"chronos-backup" as const,version:2 as const,exportedAt:now(),
+      format:"chronos-backup" as const,version:3 as const,exportedAt:now(),
       scenarios:await db.scenarios.toArray(),sessions:await db.sessions.toArray(),
       images:await db.images.toArray(),preferences:await db.preferences.toArray(),activeRuns:await db.activeRuns.toArray(),
     }));

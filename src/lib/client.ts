@@ -59,7 +59,7 @@ export function speakableDate(dateText: string): string {
 }
 
 export function speakItem(item: RunItem) {
-  speak(item.ask === "date" ? item.title : speakableDate(item.dateText));
+  speak(item.task?.type==="terms"?questionText(item):item.ask === "date" ? item.title : speakableDate(item.dateText));
 }
 
 /* ---------- sound ---------- */
@@ -210,7 +210,8 @@ export function printVariants(title: string, a: RunItem[], b: RunItem[]) {
 
 /** Answer key for one dictation run. */
 export function printAnswers(title: string, items: RunItem[], meta?: string) {
-  const html = `<h1>${escapeHtml(title)}</h1><div class="meta">Ответы хронологического диктанта${meta ? " · " + escapeHtml(meta) : ""}</div>${keyTable(items)}${scaleHtml(items.length)}`;
+  const kind=items[0]?.task?.type==="terms"?"терминологического":"хронологического";
+  const html = `<h1>${escapeHtml(title)}</h1><div class="meta">Ответы ${kind} диктанта${meta ? " · " + escapeHtml(meta) : ""}</div>${keyTable(items)}${scaleHtml(items.length)}`;
   return openPrintWindow(`${title} — ответы`, html);
 }
 

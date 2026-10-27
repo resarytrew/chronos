@@ -53,7 +53,7 @@ export default function HistoryList({ initial }: { initial: SessionRecord[] }) {
       settings:hard[0]?.task?{mode:"manual",voice:false}:undefined,
       events: hard.map((it) => ({ dateText: it.dateText, title: it.title, era: it.era })),
     });
-    toast(`Создан сценарий из ${hard.length} трудных событий`);
+    toast(`Создан сценарий из ${hard.length} трудных ${hard[0]?.task?.type==="terms"?"понятий":"заданий"}`);
     router.push(`/scenarios/editor/?id=${created.id}`);
   };
 

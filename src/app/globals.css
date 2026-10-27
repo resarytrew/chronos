@@ -550,6 +550,9 @@ textarea.field { padding: 0.75rem 0.85rem; line-height: 1.45; resize: vertical; 
 .board[data-scale="xl"] .rv-answer { font-size: clamp(1.8rem, 2.4vw, 2.6rem); }
 .rv-toggle { display: block; min-height: 56px; width: 100%; text-align: left; cursor: pointer; border-radius: 8px; }
 .rv-toggle:focus-visible { outline: 2px solid var(--b-fg); outline-offset: 4px; }
+.board[data-subject="terms"] .rv-row[data-study="true"] { grid-template-columns: 2.6rem minmax(0, 0.85fr) minmax(0, 1.7fr) auto; }
+.board[data-subject="terms"] .rv-answer { font-weight: 500; font-size: clamp(1.4rem, 1.8vw, 1.9rem); line-height: 1.4; white-space: pre-line; }
+.board[data-subject="terms"][data-scale="xl"] .rv-answer { font-size: clamp(1.6rem, 2.1vw, 2.2rem); }
 .rv-answer {
   font-weight: 650;
 }
@@ -564,6 +567,7 @@ textarea.field { padding: 0.75rem 0.85rem; line-height: 1.45; resize: vertical; 
 .rv-row .rv-reveal { animation: q-in 0.25s ease; }
 @media (max-width: 760px) {
   .rv-row { grid-template-columns: 2.2rem 1fr auto; }
+  .board[data-subject="terms"] .rv-row[data-study="true"] { grid-template-columns: 2.2rem minmax(0, 1fr) auto; }
   .rv-row .rv-answer { grid-column: 2; }
 }
 .board[data-theme="dark"] kbd { background: #1c1c1b; border-color: #3a3a38; color: #ddd; }

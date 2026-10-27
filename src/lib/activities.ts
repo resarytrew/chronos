@@ -1,14 +1,16 @@
 import type { ActivityTask, ActivityType, RunPlan, ScenarioFull } from './types';
 import { buildRunPlan, shuffle, uid } from './utils';
+import { buildTermsPlan } from "./terms";
 export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   dictation: 'Хронологический диктант', sequence: 'Хронологическая последовательность',
+  terms: 'Терминологический диктант',
   qa: 'Вопрос — ответ', choice: 'Выбор ответа', image: 'Историческое изображение',
 };
 // Each new exercise is enabled only after its own acceptance checks.
-export const ENABLED_ACTIVITIES: ActivityType[] = ['dictation','sequence','qa','choice','image'];
+export const ENABLED_ACTIVITIES: ActivityType[] = ['dictation','terms','sequence','qa','choice','image'];
 
 export function taskError(task: ActivityTask): string | null {
-  if (!task.id || !task.prompt?.trim()) return 'Заполните вопрос';
+  if (!task.id || !task.prompt?.trim()) return task.type==="terms"?'Заполните понятие':'Заполните вопрос';
   if (task.type === 'sequence') {
     if (!Array.isArray(task.cards) || task.cards.length < 3 || task.cards.length > 8) return 'Нужно от 3 до 8 карточек';
     if (task.cards.some(c => !c.id || !c.text?.trim()) || new Set(task.cards.map(c => c.id)).size !== task.cards.length) return 'Заполните все карточки';
@@ -16,8 +18,8 @@ export function taskError(task: ActivityTask): string | null {
     if (!Array.isArray(task.options) || task.options.length < 2 || task.options.length > 4 || task.options.some(o => typeof o !== 'string' || !o.trim())) return 'Нужно от 2 до 4 заполненных вариантов';
     if (!Number.isInteger(task.correctIndex) || task.correctIndex < 0 || task.correctIndex >= task.options.length) return 'Выберите правильный ответ';
     if (new Set(task.options.map(o => o.trim().toLowerCase())).size !== task.options.length) return 'Варианты ответа должны отличаться';
-  } else if (task.type === 'qa' || task.type === 'image') {
-    if (typeof task.answer !== 'string' || !task.answer.trim()) return 'Заполните ответ';
+  } else if (task.type === 'qa' || task.type === 'image' || task.type === 'terms') {
+    if (typeof task.answer !== 'string' || !task.answer.trim()) return task.type==="terms"?'Заполните определение':'Заполните ответ';
     if (task.type === 'image' && (!task.imageId || !task.alt?.trim())) return 'Добавьте изображение и его описание';
     if (task.type === 'image' && task.source && !/^https?:\/\//i.test(task.source)) return 'Источник должен начинаться с https:// или http://';
   } else return 'Неизвестный тип задания';
@@ -39,6 +41,7 @@ export function scenarioPlan(s: ScenarioFull): RunPlan {
   if (!s.activityType || s.activityType === 'dictation') return buildRunPlan({scenarioId:s.id,title:s.title,events:s.events,settings:s.settings,selection:{type:'all'}});
   const tasks = s.tasks ?? [];
   if (!tasks.length || tasks.some(t => taskError(t))) throw new Error('Заполните все задания перед показом');
+  if(s.activityType==="terms") return buildTermsPlan(s);
   const ordered = s.settings.shuffle ? shuffle(tasks) : tasks;
   return {scenarioId:s.id,title:s.title,settings:{...s.settings,mode:'manual',direction:'event-to-date',voice:false},items:ordered.map(task => ({id:task.id,title:task.prompt,dateText:taskAnswer(task),era:null,ask:'date',task:structuredClone(task),presentationOrder:task.type==="sequence"?initialOrder(task):undefined}))};
 }

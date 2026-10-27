@@ -7,8 +7,8 @@ import "./globals.css";
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH?.replace(/\/$/, "") ?? "";
 
 export const metadata: Metadata = {
-  title: "Хронос — хронологические диктанты",
-  description: "Простой инструмент для проведения хронологических диктантов на уроках истории.",
+  title: "Хронос — занятия по истории",
+  description: "Даты, исторические понятия и диктанты для занятий на электронной доске.",
   manifest: `${basePath}/manifest.webmanifest`,
 };
 

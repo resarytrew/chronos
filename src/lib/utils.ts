@@ -249,6 +249,7 @@ export function buildRunPlan(opts: {
 
 /** Independent date practice always conceals dates; never changes the source set. */
 export function orderStudyItems(items: RunItem[], order: StudyOrder): RunItem[] {
+  if(order === "sequential") return [...items].sort((a,b)=>(a.studyIndex??0)-(b.studyIndex??0));
   const chronological = [...items].sort((a,b)=>(parseDateSort(a.dateText) ?? Infinity)-(parseDateSort(b.dateText) ?? Infinity));
   if(order === "chronological") return chronological;
   const mixed=shuffle(items);
@@ -262,9 +263,11 @@ export function buildStudyPlan(opts: Parameters<typeof buildRunPlan>[0], order: 
 
 /** Prompt shown on the board for a card. */
 export function questionText(item: RunItem): string {
+  if(item.task?.type==="terms") return item.ask==="term"?item.task.answer:item.task.prompt;
   return item.ask === "date" ? item.title : item.dateText;
 }
 export function answerText(item: RunItem): string {
+  if(item.task?.type==="terms") return item.ask==="term"?item.task.prompt:item.task.answer;
   return item.ask === "date" ? item.dateText : item.title;
 }
 
@@ -329,6 +332,8 @@ export function fmtDateTime(iso: string): string {
 }
 
 export const DIRECTION_LABEL: Record<Direction, string> = {
+  "term-to-definition": "Понятие → определение",
+  "definition-to-term": "Определение → понятие",
   "event-to-date": "Событие → дата",
   "date-to-event": "Дата → событие",
   mixed: "Смешанный",
