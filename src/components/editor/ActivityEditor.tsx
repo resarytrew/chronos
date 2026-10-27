@@ -9,9 +9,11 @@ import { useApp } from "../AppProvider";
 import { Dialog, Icons, Seg, Toggle } from "../ui";
 import LocalImage, { useImageSources } from "../LocalImage";
 import ImageUpload from "../ImageUpload";
+import IllustrationEditor,{useQuestionFocus} from "../IllustrationEditor";
 import MetadataFields from "./MetadataFields";
 
 export default function ActivityEditor({initial}:{initial:ScenarioFull}) {
+  useQuestionFocus(initial.id);
   const {toast,startRun,openStudy}=useApp();
   const [draft,setDraft]=useState(initial);
   const [state,setState]=useState("saved");
@@ -52,12 +54,13 @@ export default function ActivityEditor({initial}:{initial:ScenarioFull}) {
     setDraft(s=>({...s,tasks:s.tasks?.map(t=>t.id===task.id?{...t,...changes} as ActivityTask:t)}));
   };
   const moveTask=(i:number,d:number)=>{const a=[...tasks];if(i+d<0||i+d>=a.length)return;[a[i],a[i+d]]=[a[i+d],a[i]];patch({tasks:a});};
-  const image=async(task:Extract<ActivityTask,{type:"image"}>,asset:ImageAsset)=>{
+  const image=async(task:Extract<ActivityTask,{type:"image"|"terms"}>,asset:ImageAsset)=>{
     window.clearTimeout(saveTimer.current);++seq.current;
-    const next={...draft,tasks:tasks.map(t=>t.id===task.id&&t.type==="image"?{...t,imageId:asset.id}:t)};
+    const attach=(t:ActivityTask):ActivityTask=>t.id!==task.id?t:t.type==="image"?{...t,imageId:asset.id}:t.type==="terms"?{...t,illustration:{alt:"",...t.illustration,imageId:asset.id}}:t;
+    const next={...draft,tasks:tasks.map(attach)};
     const saved=await api.updateScenario(initial.id,next,asset);
     if(!saved)throw new Error("Набор был удалён");
-    setDraft(s=>({...s,tasks:s.tasks?.map(t=>t.id===task.id&&t.type==="image"?{...t,imageId:asset.id}:t)}));setState("saved");
+    setDraft(s=>({...s,tasks:s.tasks?.map(attach)}));setState("saved");
   };
   const run=async()=>{try{const saved=await save();const plan=scenarioPlan(saved);await api.markOpened(saved.id);startRun(plan);}catch(e){toast(e instanceof Error?e.message:"Не удалось начать показ");}};
   const study=async()=>{try{const saved=await save();const plan=buildTermsStudyPlan(saved,termStudyOrder);await api.markOpened(saved.id);openStudy(plan,termStudyOrder);}catch(e){toast(e instanceof Error?e.message:"Не удалось открыть понятия");}};
@@ -73,7 +76,7 @@ export default function ActivityEditor({initial}:{initial:ScenarioFull}) {
       <MetadataFields value={draft} onChange={patch}/>
       <div className="mt-5 flex flex-col gap-4">
         {!tasks.length&&<div className="card p-8 text-center text-mute">Добавьте первое задание.</div>}
-        {tasks.map((task,i)=><div className="card space-y-3 p-5" key={task.id} data-task-editor={task.id}>
+        {tasks.map((task,i)=><div className="card space-y-3 p-5" key={task.id} data-task-editor={task.id} data-question-editor={task.id}>
           <div className="flex items-center justify-between gap-2"><h2 className="text-xl font-semibold">{terms?"Понятие":"Задание"} {i+1}</h2><div className="flex gap-2"><button className="btn btn-icon" aria-label="Задание выше" disabled={!i} onClick={()=>moveTask(i,-1)}>↑</button><button className="btn btn-icon" aria-label="Задание ниже" disabled={i===tasks.length-1} onClick={()=>moveTask(i,1)}>↓</button><button className="btn btn-icon" aria-label="Удалить задание" onClick={()=>patch({tasks:tasks.filter(t=>t.id!==task.id)})}><Icons.Trash size={20}/></button></div></div>
           <label className="block text-sm text-mute">{terms?"Понятие":"Вопрос или инструкция"}<textarea className="field mt-1" rows={terms?1:2} aria-label={(terms?"Понятие ":"Вопрос ")+(i+1)} value={task.prompt} onChange={e=>update({...task,prompt:e.target.value})}/></label>
           {task.type==="sequence"&&<>
@@ -94,6 +97,7 @@ export default function ActivityEditor({initial}:{initial:ScenarioFull}) {
             <label className="block text-sm text-mute">Источник (необязательно)<input className="field mt-1" aria-label="Источник изображения" value={task.source??""} onChange={e=>update({...task,source:e.target.value})}/></label>
           </>}
           {(task.type==="qa"||task.type==="image"||task.type==="terms")&&<label className="block text-sm text-mute">{terms?"Определение":"Эталонный ответ"}<textarea className="field mt-1" rows={terms?3:2} aria-label={(terms?"Определение ":"Ответ ")+(i+1)} value={task.answer} onChange={e=>update({...task,answer:e.target.value})}/></label>}
+          {task.type==="terms"&&<IllustrationEditor value={task} onChange={v=>update({...task,...v})} onSave={asset=>image(task,asset)}/>}
           {!terms&&<label className="block text-sm text-mute">Пояснение после проверки<textarea className="field mt-1" rows={2} aria-label={"Пояснение "+(i+1)} value={task.explanation??""} onChange={e=>update({...task,explanation:e.target.value})}/></label>}
           {errors[i]&&<p className="text-sm text-[#8c3f3f]">{errors[i]}</p>}
         </div>)}

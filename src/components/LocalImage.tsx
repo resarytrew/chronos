@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/client";
 import { uid } from "@/lib/utils";
-import type { ActivityTask, ImageAsset } from "@/lib/types";
+import type { Illustration, ImageAsset } from "@/lib/types";
 import ImageViewer from "./ImageViewer";
 
 export interface PreparedImage extends ImageAsset {width:number;height:number;bytes:number}
@@ -24,17 +24,17 @@ export async function prepareImage(file: File,profile:"standard"|"detail"="stand
     return {id:uid(),dataUrl,width:canvas.width,height:canvas.height,bytes};
   }finally{bitmap.close();}
 }
-export function useImageSources(tasks:ActivityTask[]):Record<string,string> {
-  const ids=JSON.stringify([...new Set(tasks.flatMap(t=>t.type==="image"&&t.imageId?[t.imageId]:[]))].sort());
+export function useImageSources(tasks:{type?:string;imageId?:string;illustration?:Illustration}[]):Record<string,string> {
+  const ids=JSON.stringify([...new Set(tasks.flatMap(t=>t.type==="image"&&t.imageId?[t.imageId]:t.illustration?.imageId?[t.illustration.imageId]:[]))].sort());
   const [sources,setSources]=useState<Record<string,string>>({});
   useEffect(()=>{let mounted=true;const list=JSON.parse(ids) as string[];void Promise.all(list.map(id=>api.getImage(id))).then(assets=>{if(mounted)setSources(Object.fromEntries(assets.filter((a):a is ImageAsset=>Boolean(a)).map(a=>[a.id,a.dataUrl])));}).catch(()=>{if(mounted)setSources({});});return()=>{mounted=false;};},[ids]);
   return sources;
 }
-export default function LocalImage({id,alt,caption,className,onViewerOpen,onFailure,onTextFallback}:{id:string;alt:string;caption?:string;className?:string;onViewerOpen?:()=>void;onFailure?:()=>void;onTextFallback?:()=>void}) {
+export default function LocalImage({id,alt,caption,className,onViewerOpen,onFailure,onReady,onTextFallback}:{id:string;alt:string;caption?:string;className?:string;onViewerOpen?:()=>void;onFailure?:()=>void;onReady?:()=>void;onTextFallback?:()=>void}) {
   const [asset,setAsset]=useState<ImageAsset|null|undefined>();
   const [attempt,setAttempt]=useState(0);
   const [viewing,setViewing]=useState(false);
   const failure=useRef(onFailure);failure.current=onFailure;
   useEffect(()=>{let mounted=true;setAsset(undefined);setViewing(false);void api.getImage(id).then(a=>{if(mounted){setAsset(a??null);if(!a)failure.current?.();}}).catch(()=>{if(mounted){setAsset(null);failure.current?.();}});return()=>{mounted=false;};},[id,attempt]);
-  return <figure className={className} onClick={e=>e.stopPropagation()}>{asset?<button type="button" className="local-image-open" aria-label="Увеличить изображение" onClick={()=>{onViewerOpen?.();setViewing(true);}}><img src={asset.dataUrl} alt={alt} onError={()=>{setAsset(null);failure.current?.();}} className="mx-auto max-h-[35vh] max-w-full rounded-xl object-contain"/><span className="local-image-hint">Увеличить</span></button>:<div role="status">{asset===null?<><p>Изображение недоступно. Восстановите набор из файла.</p><button className="btn" onClick={()=>setAttempt(v=>v+1)}>Повторить загрузку</button>{onTextFallback&&<button className="btn" onClick={onTextFallback}>Показать текст</button>}</>:"Загрузка изображения…"}</div>}{caption&&<figcaption className="mt-2 text-base text-mute">{caption}</figcaption>}{viewing&&asset&&<ImageViewer key={id} src={asset.dataUrl} alt={alt} onClose={()=>setViewing(false)}/>}</figure>;
+  return <figure className={className} onClick={e=>e.stopPropagation()}>{asset?<button type="button" className="local-image-open" aria-label="Увеличить изображение" onClick={()=>{onViewerOpen?.();setViewing(true);}}><img src={asset.dataUrl} alt={alt} onLoad={onReady} onError={()=>{setAsset(null);failure.current?.();}} className="mx-auto max-h-[35vh] max-w-full rounded-xl object-contain"/><span className="local-image-hint">Увеличить</span></button>:<div role="status">{asset===null?<><p>Изображение недоступно. Восстановите набор из файла.</p><button className="btn" onClick={()=>setAttempt(v=>v+1)}>Повторить загрузку</button>{onTextFallback&&<button className="btn" onClick={onTextFallback}>Показать текст</button>}</>:"Загрузка изображения…"}</div>}{caption&&<figcaption className="mt-2 text-base text-mute">{caption}</figcaption>}{viewing&&asset&&<ImageViewer key={id} src={asset.dataUrl} alt={alt} onClose={()=>setViewing(false)}/>}</figure>;
 }

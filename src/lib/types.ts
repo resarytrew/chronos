@@ -41,7 +41,9 @@ export function withDefaults(s?: Partial<ScenarioSettings> | null): ScenarioSett
   };
 }
 
-export interface EventItem {
+export interface Illustration { imageId:string; alt:string; source?:string }
+export interface IllustratedQuestion { illustration?:Illustration; questionDisplay?:"text"|"image" }
+export interface EventItem extends IllustratedQuestion {
   id: string;
   dateText: string;
   title: string;
@@ -86,7 +88,7 @@ export interface ScenarioFull extends ScenarioMeta {
 /** What students have to write down for this card. */
 export type Ask = "date" | "event" | "term" | "definition";
 
-export interface RunItem {
+export interface RunItem extends IllustratedQuestion {
   studyIndex?: number;
   task?: ActivityTask;
   presentationOrder?: string[];
@@ -144,7 +146,7 @@ export type ActivityType = "dictation" | "terms" | "sequence" | "qa" | "choice" 
 interface TaskBase { id: string; prompt: string; explanation?: string }
 export type ActivityTask =
   /** For terms, prompt is the concept and answer is its definition. */
-  | (TaskBase & { type: "terms"; answer: string })
+  | (TaskBase & IllustratedQuestion & { type: "terms"; answer: string })
   | (TaskBase & { type: "sequence"; cards: { id: string; text: string }[] })
   | (TaskBase & { type: "qa"; answer: string })
   | (TaskBase & { type: "choice"; options: string[]; correctIndex: number })

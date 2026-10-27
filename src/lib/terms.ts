@@ -11,7 +11,7 @@ export function buildTermsPlan(s:ScenarioFull):RunPlan {
   let items:RunItem[]=tasks.map((t,i)=>{
     const task=t as TermTask;
     const ask:Ask=direction==="definition-to-term"?"term":direction==="mixed"&&Math.random()<0.5?"term":"definition";
-    return {id:task.id,title:task.prompt,dateText:"",era:null,ask,task:structuredClone(task),studyIndex:i};
+    return {id:task.id,title:task.prompt,dateText:"",era:null,ask,task:structuredClone(task),studyIndex:i,illustration:task.illustration?structuredClone(task.illustration):undefined,questionDisplay:task.questionDisplay};
   });
   if(direction==="mixed"&&items.length>1) {
     if(items.every(it=>it.ask==="term"))items[0]={...items[0],ask:"definition"};

@@ -36,9 +36,9 @@ test("term package and full backup round trip preserve tasks, direction, history
   const plan=buildTermsPlan({...s,settings:{...s.settings,direction:"definition-to-term"}});
   await storage.createSession({scenarioId:s.id,scenarioTitle:s.title,items:plan.items,direction:plan.settings.direction,mode:"auto",intervalSec:7,durationSec:10,startedAt:new Date().toISOString()});
   await storage.saveActiveRun({id:"current",plan,index:1,mode:"auto",elapsedMs:7000,questionMs:0,startedAt:new Date().toISOString()});
-  const pkg=await storage.exportPackage([s.id]);assert.equal(pkg.version,3);
+  const pkg=await storage.exportPackage([s.id]);assert.equal(pkg.version,4);
   await storage.importAll(pkg,"merge");
-  const backup=await storage.exportAll();assert.equal(storage.inspectTransfer(backup).version,3);
+  const backup=await storage.exportAll();assert.equal(storage.inspectTransfer(backup).version,4);
   await storage.importAll(backup,"replace");
   assert.equal((await storage.getActiveRun())?.plan.items[0].ask,"term");
   assert.equal(questionText((await storage.listSessions())[0].items[0]),"Народное собрание.");

@@ -6,6 +6,31 @@ import { storage } from "./storage";
 
 /** Compatibility facade for UI components; all data stays in browser IndexedDB. */
 export const api = storage;
+export interface ImageProblem {index:number;message:string}
+/** Preflight uses the same local assets as the board, without fetching external URLs. */
+export async function checkRunImages(items:RunItem[],signal?:AbortSignal):Promise<ImageProblem[]> {
+  const problems:ImageProblem[]=[];
+  const checked=new Map<string,boolean>();
+  // Decode one map at a time so a large set does not allocate every full-size bitmap.
+  for(const [index,it] of items.entries()) {
+    if(signal?.aborted)break;
+    const media=it.questionDisplay==="image"?it.illustration:it.task?.type==="image"?it.task:undefined;
+    if(it.questionDisplay!=="image"&&!media)continue;
+    if(!media?.imageId){problems.push({index,message:"Прикрепите изображение"});continue;}
+    if(typeof media.alt!=="string"||!media.alt.trim()){problems.push({index,message:"Заполните альтернативное описание"});continue;}
+    if(media.source&&!/^https?:\/\//i.test(media.source)){problems.push({index,message:"Источник должен начинаться с https:// или http://"});continue;}
+    try{
+      if(checked.get(media.imageId)===false)throw new Error();
+      if(!checked.has(media.imageId)){
+        const asset=await api.getImage(media.imageId);if(!asset)throw new Error();
+        const image=new Image();
+        try{image.src=asset.dataUrl;await image.decode();}finally{image.src="";}
+        checked.set(media.imageId,true);
+      }
+    }catch{checked.set(media.imageId,false);problems.push({index,message:"Изображение недоступно или повреждено"});}
+  }
+  return problems;
+}
 
 /* ---------- speech ---------- */
 
@@ -59,6 +84,7 @@ export function speakableDate(dateText: string): string {
 }
 
 export function speakItem(item: RunItem) {
+  if(item.questionDisplay==="image")return;
   speak(item.task?.type==="terms"?questionText(item):item.ask === "date" ? item.title : speakableDate(item.dateText));
 }
 
@@ -175,25 +201,30 @@ function scaleHtml(total: number) {
     .join("; ")}</p>`;
 }
 
-function questionsList(items: RunItem[], blanks: boolean) {
+function printedQuestion(it:RunItem,images:Record<string,string>) {
+  const media=it.questionDisplay==="image"?it.illustration:it.task?.type==="image"?it.task:undefined;
+  const image=media&&images[media.imageId]?'<img style="max-width:100%;max-height:95mm" src="'+escapeHtml(images[media.imageId])+'" alt="'+escapeHtml(media.alt)+'">':media||it.questionDisplay==="image"?"<p>[Изображение недоступно]</p>":"";
+  return (it.questionDisplay==="image"?"":escapeHtml(questionText(it)))+image;
+}
+function questionsList(items: RunItem[], blanks: boolean,images:Record<string,string>={}) {
   return `<ol>${items
-    .map((it) => `<li>${escapeHtml(questionText(it))}${blanks ? '<span class="blank"></span>' : ""}</li>`)
+    .map((it) => `<li>${printedQuestion(it,images)}${blanks ? '<span class="blank"></span>' : ""}</li>`)
     .join("")}</ol>`;
 }
 
-function keyTable(items: RunItem[]) {
+function keyTable(items: RunItem[],images:Record<string,string>={}) {
   return `<table><tr><th style="width:8%">№</th><th>Вопрос</th><th>Ответ</th></tr>${items
     .map(
       (it, i) =>
-        `<tr><td>${i + 1}</td><td>${escapeHtml(questionText(it))}</td><td><b>${escapeHtml(answerText(it))}</b></td></tr>`,
+        `<tr><td>${i + 1}</td><td>${printedQuestion(it,images)}</td><td><b>${escapeHtml(answerText(it))}</b></td></tr>`,
     )
     .join("")}</table>`;
 }
 
 /** Handout with variants А and Б, teacher's key on a separate page. */
-export function printVariants(title: string, a: RunItem[], b: RunItem[]) {
+export function printVariants(title: string, a: RunItem[], b: RunItem[],images:Record<string,string>={}) {
   const sheet = (label: string, items: RunItem[]) =>
-    `<div><h1>${escapeHtml(title)}</h1><div class="meta">Хронологический диктант · Вариант ${label} · Фамилия: ______________ Класс: ______</div>${questionsList(items, true)}</div>`;
+    `<div><h1>${escapeHtml(title)}</h1><div class="meta">Хронологический диктант · Вариант ${label} · Фамилия: ______________ Класс: ______</div>${questionsList(items, true,images)}</div>`;
   const html = `
     <div class="cols">${sheet("А", a)}${sheet("Б", b)}</div>
     <div class="cut">✂ линия отреза</div>
@@ -201,17 +232,17 @@ export function printVariants(title: string, a: RunItem[], b: RunItem[]) {
     <div class="key">
       <h1>${escapeHtml(title)} — ключ для учителя</h1>
       <div class="meta">Не раздавать ученикам</div>
-      <h2>Вариант А</h2>${keyTable(a)}
-      <h2>Вариант Б</h2>${keyTable(b)}
+      <h2>Вариант А</h2>${keyTable(a,images)}
+      <h2>Вариант Б</h2>${keyTable(b,images)}
       ${scaleHtml(a.length)}
     </div>`;
   return openPrintWindow(`${title} — варианты`, html);
 }
 
 /** Answer key for one dictation run. */
-export function printAnswers(title: string, items: RunItem[], meta?: string) {
+export function printAnswers(title: string, items: RunItem[], meta?: string,images:Record<string,string>={}) {
   const kind=items[0]?.task?.type==="terms"?"терминологического":"хронологического";
-  const html = `<h1>${escapeHtml(title)}</h1><div class="meta">Ответы ${kind} диктанта${meta ? " · " + escapeHtml(meta) : ""}</div>${keyTable(items)}${scaleHtml(items.length)}`;
+  const html = `<h1>${escapeHtml(title)}</h1><div class="meta">Ответы ${kind} диктанта${meta ? " · " + escapeHtml(meta) : ""}</div>${keyTable(items,images)}${scaleHtml(items.length)}`;
   return openPrintWindow(`${title} — ответы`, html);
 }
 
@@ -219,10 +250,9 @@ export function printAnswers(title: string, items: RunItem[], meta?: string) {
 export function printWorksheet(title: string, items: RunItem[], answers: boolean, images: Record<string,string> = {}) {
   const rows=items.map(it=>{
     const task=it.task;
-    const image=task?.type==="image" && images[task.imageId] ? '<img style="max-width:100%;max-height:95mm" src="'+images[task.imageId]+'" alt="'+escapeHtml(task.alt)+'">' : "";
     const options=task?.type==="choice" && !answers ? "<ol>"+task.options.map(o=>"<li>"+escapeHtml(o)+"</li>").join("")+"</ol>" : "";
     const cards=task?.type==="sequence" && !answers ? "<ul>"+[...task.cards].reverse().map(c=>"<li>"+escapeHtml(c.text)+"</li>").join("")+"</ul>" : "";
-    return "<li><b>"+escapeHtml(questionText(it))+"</b>"+image+options+cards+(answers?"<p>"+escapeHtml(answerText(it))+"</p>"+(task?.explanation?"<p>"+escapeHtml(task.explanation)+"</p>":""):'<p>Ответ: __________________________________________________</p>')+"</li>";
+    return "<li>"+printedQuestion(it,images)+options+cards+(answers?"<p>"+escapeHtml(answerText(it))+"</p>"+(task?.explanation?"<p>"+escapeHtml(task.explanation)+"</p>":""):'<p>Ответ: __________________________________________________</p>')+"</li>";
   }).join("");
   return openPrintWindow(title+" — "+(answers?"ответы":"задания"),"<h1>"+escapeHtml(title)+"</h1><div class=meta>"+(answers?"Ключ для учителя":"Фамилия: ____________________ Класс: ______")+"</div><ol>"+rows+"</ol>");
 }

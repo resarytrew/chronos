@@ -20,6 +20,7 @@ import {
   type ActivityTask,
   type ImageAsset,
   type LocalPreference,
+  type IllustratedQuestion,
 } from "@/lib/types";
 
 type StoredScenario = ScenarioFull & { kind: "user" };
@@ -47,7 +48,7 @@ class ChronosDatabase extends Dexie {
 const db = new ChronosDatabase();
 const saveQueues = new Map<string, Promise<unknown>>();
 
-export interface EventInput {
+export interface EventInput extends IllustratedQuestion {
   id?: string;
   dateText: string;
   title: string;
@@ -71,6 +72,8 @@ function cleanEvents(events: EventInput[] = []): EventItem[] {
       yearSort,
       sortKey: parseDateSort(dateText),
       era: event.era ?? eraByYear(yearSort),
+      illustration: event.illustration ? structuredClone(event.illustration) : undefined,
+      questionDisplay: event.questionDisplay,
     };
   });
 }
@@ -121,6 +124,8 @@ function normalizeScenario(value: Partial<ScenarioFull> & { events: unknown[] },
       dateText: String(event.dateText ?? (event as unknown as {date?:string}).date ?? ""),
       title: String(event.title ?? ""),
       era: event.era ?? null,
+      illustration: event.illustration,
+      questionDisplay: event.questionDisplay,
     }));
   return {
     id: preserveId && typeof value.id === "string" ? value.id : uid(),
@@ -157,7 +162,7 @@ export const storage = {
   },
   async getActiveRun() { return db.activeRuns.get("current"); },
   async saveActiveRun(run: ActiveRun) { await enqueue("active", () => db.activeRuns.put(run)); },
-  async clearActiveRun() { await enqueue("active", () => db.activeRuns.delete("current")); },
+  async clearActiveRun() { await enqueue("active", () => db.activeRuns.delete("current"));await this.collectUnusedImages().catch(()=>{}); },
   async listScenarios(kind: "user" | "library" = "user"): Promise<ScenarioSummary[]> {
     if (kind === "library") return (await this.listScenariosFull("library")).map(toSummary);
     const records = await db.scenarios.orderBy("updatedAt").reverse().toArray();
@@ -220,6 +225,11 @@ export const storage = {
         updatedAt: now(),
       };
       await db.transaction("rw", [db.scenarios, db.preferences, db.images], async () => {if(image)await db.images.put(image);await db.scenarios.put(updated);await db.preferences.put({id:"modifiedAt",value:now()});});
+      if(input.events||input.tasks){
+        const before=imageIds({scenarios:[current],sessions:[],activeRuns:[]});
+        const after=imageIds({scenarios:[updated],sessions:[],activeRuns:[]});
+        if([...before].some(id=>!after.has(id)))await this.collectUnusedImages().catch(()=>{});
+      }
       return updated;
     });
   },
@@ -228,6 +238,7 @@ export const storage = {
     const exists = await db.scenarios.get(id);
     if (!exists) return false;
     await db.transaction("rw", db.scenarios, db.preferences, async () => {await db.scenarios.delete(id);await db.preferences.put({id:"modifiedAt",value:now()});});
+    await this.collectUnusedImages().catch(()=>{});
     return true;
   },
 
@@ -276,6 +287,7 @@ export const storage = {
     const exists = await db.sessions.get(id);
     if (!exists) return false;
     await db.transaction("rw",db.sessions,db.preferences,async()=>{await db.sessions.delete(id);await db.preferences.put({id:"modifiedAt",value:now()});});
+    await this.collectUnusedImages().catch(()=>{});
     return true;
   },
 
@@ -284,7 +296,7 @@ export const storage = {
     const scenarios = ids ? (await db.scenarios.bulkGet(ids)).filter((s): s is StoredScenario => Boolean(s)) : await db.scenarios.toArray();
     const referenced = imageIds({scenarios,sessions:[],activeRuns:[]});
     const images = (await db.images.bulkGet([...referenced])).filter((i): i is ImageAsset=>Boolean(i));
-    return {format:"chronos-package",version:3,exportedAt:now(),scenarios,sessions:[],images,preferences:[],activeRuns:[]};
+    return {format:"chronos-package",version:4,exportedAt:now(),scenarios,sessions:[],images,preferences:[],activeRuns:[]};
   },
   async noteBackupExport() { await db.preferences.put({id:"backupExportedAt",value:now()}); },
   async backupStatus(): Promise<{exportedAt: string | null; changed: boolean}> {
@@ -297,7 +309,7 @@ export const storage = {
   async exportAll(): Promise<BackupFile> {
     await Promise.all([...saveQueues.values()]);
     return db.transaction("r", [db.scenarios,db.sessions,db.images,db.preferences,db.activeRuns], async () => ({
-      format:"chronos-backup" as const,version:3 as const,exportedAt:now(),
+      format:"chronos-backup" as const,version:4 as const,exportedAt:now(),
       scenarios:await db.scenarios.toArray(),sessions:await db.sessions.toArray(),
       images:await db.images.toArray(),preferences:await db.preferences.toArray(),activeRuns:await db.activeRuns.toArray(),
     }));
@@ -318,13 +330,14 @@ export const storage = {
         assetMap.set(image.id,id);
         await db.images.put({...image,id});
       }
-      const remapTask = (task: ActivityTask): ActivityTask => task.type === "image" ? {...task,imageId:assetMap.get(task.imageId) ?? task.imageId} : task;
-      const remapItem = (it:RunItem): RunItem => ({...it,task:it.task ? remapTask(it.task) : undefined});
+      const remapIllustration=<T extends IllustratedQuestion>(v:T):T=>({...v,illustration:v.illustration?{...v.illustration,imageId:assetMap.get(v.illustration.imageId)??v.illustration.imageId}:undefined});
+      const remapTask = (task: ActivityTask): ActivityTask => task.type === "image" ? {...task,imageId:assetMap.get(task.imageId) ?? task.imageId} : task.type==="terms"?remapIllustration(task):task;
+      const remapItem = (it:RunItem): RunItem => ({...remapIllustration(it),task:it.task ? remapTask(it.task) : undefined});
       const scenarioMap = new Map<string,string>();
       for (const s of scenarios) {
         const id = await db.scenarios.get(s.id) ? uid() : s.id;
         scenarioMap.set(s.id,id);
-        await db.scenarios.add({...s,id,tasks:s.tasks?.map(remapTask)});
+        await db.scenarios.add({...s,id,tasks:s.tasks?.map(remapTask),events:s.events.map(remapIllustration)});
       }
       for (const s of file.sessions) {
         const id = await db.sessions.get(s.id) ? uid() : s.id;
@@ -343,7 +356,7 @@ export const storage = {
   async collectUnusedImages() {
     await db.transaction("rw",[db.scenarios,db.sessions,db.activeRuns,db.images],async()=>{
       const ids = imageIds({scenarios:await db.scenarios.toArray(),sessions:await db.sessions.toArray(),activeRuns:await db.activeRuns.toArray()});
-      const unused = (await db.images.toArray()).filter(i=>!ids.has(i.id)).map(i=>i.id);
+      const unused = (await db.images.toCollection().primaryKeys()).filter(id=>!ids.has(id));
       await db.images.bulkDelete(unused);
     });
   },

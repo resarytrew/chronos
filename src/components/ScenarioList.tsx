@@ -17,6 +17,8 @@ export default function ScenarioList({ initial }: { initial: ScenarioSummary[] }
   const { toast, startRun, openStudy } = useApp();
   const [items,setItems] = useState(initial);
   const [busy,setBusy] = useState(false);
+  const [ready,setReady] = useState(false);
+  useEffect(()=>setReady(true),[]);
   const [toDelete,setToDelete] = useState<ScenarioSummary|null>(null);
   const [filters,setFilters] = useState(EMPTY_FILTERS);
   const [activityType,setActivityType] = useState<ActivityType>("dictation");
@@ -73,7 +75,7 @@ export default function ScenarioList({ initial }: { initial: ScenarioSummary[] }
     catch(e){fail(e);}finally{setBusy(false);}
   };
   const filtered=filterScenarios(items,filters);
-  return <div className="mx-auto max-w-[1100px] px-5 py-6 sm:px-8 lg:px-10">
+  return <fieldset disabled={!ready} className="mx-auto min-w-0 w-full max-w-[1100px] border-0 px-5 py-6 sm:px-8 lg:px-10">
     <div className="flex flex-wrap items-end justify-between gap-4">
       <div><h1 className="text-[2.2rem] font-bold tracking-tight sm:text-[2.6rem]">Сценарии</h1><p className="mt-1 text-mute">Ваши занятия. Подготовьте набор или сразу начните показ.</p></div>
       <div className="flex flex-wrap gap-2">
@@ -122,5 +124,5 @@ export default function ScenarioList({ initial }: { initial: ScenarioSummary[] }
       text={pending?"Наборов: "+pending.scenarios.length+", показов: "+pending.sessions.length+", изображений: "+pending.images.length+". "+(pending.format==="chronos-backup"?"«Объединить» сохранит текущие данные; «Заменить» удалит их.":"Текущие данные сохранятся."):""}
       onConfirm={()=>!busy&&void restore("merge")} confirmLabel={busy?"Сохранение…":"Объединить"}
       extraAction={pending?.format==="chronos-backup"?{label:"Заменить данные",onClick:()=>{if(!busy)void restore("replace");},danger:true}:undefined}/>
-  </div>;
+  </fieldset>;
 }

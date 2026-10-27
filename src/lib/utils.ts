@@ -235,6 +235,8 @@ export function buildRunPlan(opts: {
     dateText: e.dateText,
     title: e.title,
     era: e.era,
+    illustration: e.illustration ? structuredClone(e.illustration) : undefined,
+    questionDisplay: e.questionDisplay,
     ask: askFor(opts.settings.direction, i, Math.random),
   }));
   if (opts.settings.direction === "mixed" && items.length > 1) {
@@ -371,14 +373,14 @@ export function fmtBand(b: GradeBand): string {
 export function itemsToText(items: RunItem[], withAnswers: boolean): string {
   return items
     .map((it, i) => {
-      const q = questionText(it);
+      const q = it.questionDisplay==="image" ? "[Изображение]" : questionText(it);
       return withAnswers ? `${i + 1}. ${q} — ${answerText(it)}` : `${i + 1}. ${q}`;
     })
     .join("\n");
 }
 
 export function eventsToText(items: EventItem[]): string {
-  return items.map((e) => `${e.dateText} — ${e.title}`).join("\n");
+  return items.map((e) => `${e.dateText} — ${e.title}${e.illustration ? " [иллюстрация]" : ""}`).join("\n");
 }
 
 export async function copyText(text: string): Promise<boolean> {

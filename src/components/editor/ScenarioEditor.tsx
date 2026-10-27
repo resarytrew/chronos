@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { EventItem, ScenarioFull, ScenarioSettings, Selection, StudyOrder } from "@/lib/types";
+import type { EventItem, ImageAsset, ScenarioFull, ScenarioSettings, Selection, StudyOrder } from "@/lib/types";
 import {
   analyzeEvents,
   buildRunPlan,
@@ -26,6 +26,8 @@ import { useApp } from "@/components/AppProvider";
 import { Confirm, Icons, Menu } from "@/components/ui";
 import EventRow from "./EventRow";
 import SettingsPanel from "./SettingsPanel";
+import IllustrationEditor,{useQuestionFocus} from "../IllustrationEditor";
+import {useImageSources} from "../LocalImage";
 import { QuickPasteDialog, VariantsDialog } from "./Dialogs";
 
 type SaveState = "saved" | "dirty" | "saving" | "error";
@@ -44,6 +46,7 @@ function newEvent(partial?: Partial<EventItem>): EventItem {
 }
 
 export default function ScenarioEditor({ initial, autoPaste }: { initial: ScenarioFull; autoPaste?: boolean }) {
+  useQuestionFocus(initial.id);
   const router = useRouter();
   const { startRun, openStudy, toast } = useApp();
 
@@ -73,6 +76,8 @@ export default function ScenarioEditor({ initial, autoPaste }: { initial: Scenar
   }, [autoPaste]);
 
   /* ---------- autosave ---------- */
+  const saveTimer=useRef<number|undefined>(undefined);
+  const sources=useImageSources(events);
 
   useEffect(() => {
     if (firstRender.current) {
@@ -91,6 +96,7 @@ export default function ScenarioEditor({ initial, autoPaste }: { initial: Scenar
         if (seq === saveSeq.current) setSaveState("error");
       }
     }, 800);
+    saveTimer.current=t;
     return () => window.clearTimeout(t);
   }, [title, settings, events, initial.id, meta]);
 
@@ -138,6 +144,13 @@ export default function ScenarioEditor({ initial, autoPaste }: { initial: Scenar
   }, []);
 
   const deleteEvent = useCallback((id: string) => setEvents((prev) => prev.filter((e) => e.id !== id)), []);
+  const saveIllustration=async(id:string,asset:ImageAsset)=>{
+    window.clearTimeout(saveTimer.current);++saveSeq.current;
+    const attach=(e:EventItem)=>e.id===id?{...e,illustration:{alt:"",...e.illustration,imageId:asset.id}}:e;
+    const saved=await api.updateScenario(initial.id,{title,settings,events:events.map(attach),...meta},asset);
+    if(!saved)throw new Error("Набор был удалён");
+    setEvents(p=>p.map(attach));
+  };
 
   const moveEvent = useCallback((id: string, dir: -1 | 1) => {
     setEvents((prev) => {
@@ -230,7 +243,7 @@ export default function ScenarioEditor({ initial, autoPaste }: { initial: Scenar
       title: `${title} (копия)`,
       settings,
       ...meta,
-      events: events.map((e) => ({ dateText: e.dateText, title: e.title, era: e.era })),
+      events: events.map((e) => ({ dateText: e.dateText, title: e.title, era: e.era,illustration:e.illustration,questionDisplay:e.questionDisplay })),
     });
     toast("Сценарий скопирован");
     router.push(`/scenarios/editor/?id=${copy.id}`);
@@ -257,8 +270,8 @@ export default function ScenarioEditor({ initial, autoPaste }: { initial: Scenar
       onClick: async () => toast((await copyText(`${title}\n${eventsToText(usable)}`)) ? "Список скопирован" : "Не удалось скопировать"),
     },
     { label: "Печать списка дат", icon: <Icons.Print size={20} />, onClick: () => printEventList(title, usable) || toast("Разрешите всплывающие окна") },
-    { label: "Печать листа заданий", icon: <Icons.Print size={20} />, onClick: () => printWorksheet(title, buildRunPlan({scenarioId:initial.id,title,events,settings,selection}).items, false) || toast("Разрешите всплывающие окна") },
-    { label: "Печать ключа ответов", icon: <Icons.Print size={20} />, onClick: () => printWorksheet(title, buildRunPlan({scenarioId:initial.id,title,events,settings,selection}).items, true) || toast("Разрешите всплывающие окна") },
+    { label: "Печать листа заданий", icon: <Icons.Print size={20} />, onClick: () => printWorksheet(title, buildRunPlan({scenarioId:initial.id,title,events,settings,selection}).items, false,sources) || toast("Разрешите всплывающие окна") },
+    { label: "Печать ключа ответов", icon: <Icons.Print size={20} />, onClick: () => printWorksheet(title, buildRunPlan({scenarioId:initial.id,title,events,settings,selection}).items, true,sources) || toast("Разрешите всплывающие окна") },
     {
       label: "Экспорт в JSON",
       icon: <Icons.Download size={20} />,
@@ -347,6 +360,7 @@ export default function ScenarioEditor({ initial, autoPaste }: { initial: Scenar
             </div>
           )}
           {events.map((e, i) => (
+            <div key={e.id} data-question-editor={e.id}>
             <EventRow
               key={e.id}
               item={e}
@@ -367,6 +381,8 @@ export default function ScenarioEditor({ initial, autoPaste }: { initial: Scenar
                 setOverId(null);
               }}
             />
+            <IllustrationEditor value={e} onChange={v=>updateEvent(e.id,v)} onSave={asset=>saveIllustration(e.id,asset)}/>
+            </div>
           ))}
         </div>
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ActiveRun, Mode, RunPlan, SessionRecord, TaskResponse, StudyOrder } from "@/lib/types";
+import type { ActiveRun, Mode, RunItem, RunPlan, SessionRecord, TaskResponse, StudyOrder } from "@/lib/types";
 import { ACTIVITY_LABELS, initialOrder } from "@/lib/activities";
 import TaskBoard from "./TaskBoard";
 import LocalImage, { useImageSources } from "./LocalImage";
@@ -18,6 +18,8 @@ import {
 } from "@/lib/utils";
 import {
   api,
+  checkRunImages,
+  type ImageProblem,
   beep,
   enterFullscreen,
   exitFullscreen,
@@ -59,7 +61,16 @@ export default function Board({ plan, initialPhase = "start", session = null, re
   const orderedStudy=terminology?"sequential":"chronological";
   const makeResponses = () => Object.fromEntries(items.filter(it=>it.task).map(it=>[it.id,{order:it.presentationOrder ?? initialOrder(it.task!)}]));
   const [responses,setResponses] = useState<Record<string,TaskResponse>>(()=>resume?.responses ?? makeResponses());
-  const sources=useImageSources(items.flatMap(it=>it.task?[it.task]:[]));
+  const sources=useImageSources(items.map(it=>it.task?.type==="image"?it.task:it));
+  const [imageProblems,setImageProblems]=useState<ImageProblem[]>([]);
+  const [checkingImages,setCheckingImages]=useState(true);
+  const [checkAttempt,setCheckAttempt]=useState(0);
+  const [failedImages,setFailedImages]=useState<Set<string>>(()=>new Set());
+  useEffect(()=>{
+    const controller=new AbortController();setCheckingImages(true);
+    void checkRunImages(items,controller.signal).then(problems=>{if(!controller.signal.aborted){setImageProblems(problems);setCheckingImages(false);}});
+    return()=>controller.abort();
+  },[items,checkAttempt]);
 
   const [phase, setPhase] = useState<Phase>(resume ? "question" : initialPhase);
   const [index, setIndex] = useState(resume?.index ?? 0);
@@ -84,8 +95,8 @@ export default function Board({ plan, initialPhase = "start", session = null, re
   const savedRef = useRef(Boolean(session));
   const voiceOk = speechSupported();
 
-  const running = phase === "question" && !paused && !shade && !exitAsk;
   const current = items[index];
+  const running = phase === "question" && !paused && !shade && !exitAsk && !failedImages.has(current?.id??"");
 
   useEffect(() => {
     const hide = () => { if (document.hidden) { setPaused(true); stopSpeaking(); } };
@@ -93,7 +104,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
     return () => document.removeEventListener("visibilitychange", hide);
   }, []);
   const snapshot = useRef<ActiveRun | null>(null);
-  snapshot.current = phase === "question" ? { id: "current", plan, index, mode, elapsedMs, questionMs, responses, startedAt: startedAtRef.current } : null;
+  snapshot.current = phase === "question" ? { id: "current", plan:{...plan,items}, index, mode, elapsedMs, questionMs, responses, startedAt: startedAtRef.current } : null;
   useEffect(() => {
     if (phase !== "question") return;
     let warned = false;
@@ -130,6 +141,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
   }, [phase, index]);
 
   const start = useCallback(() => {
+    if(checkingImages||imageProblems.length)return;
     enterFullscreen();
     void requestWakeLock();
     if (s.beep) beep("tick");
@@ -142,7 +154,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
     setPhase(s.countdown ? "countdown" : "question");
   // The plan is immutable for the lifetime of one board.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [s.beep, s.countdown, items]);
+  }, [s.beep, s.countdown, items,checkingImages,imageProblems.length]);
 
   const restart = useCallback(() => {
     setInterrupted(false);
@@ -166,7 +178,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
   }, [onClose]);
 
   const repeatVoice = useCallback(() => {
-    if (!current || !voiceOk) return;
+    if (!current || !voiceOk || current.questionDisplay==="image") return;
     speakItem(current);
     setSpeaking(true);
     window.setTimeout(() => setSpeaking(false), 1200);
@@ -369,9 +381,17 @@ export default function Board({ plan, initialPhase = "start", session = null, re
   );
 
   /* ---------- render ---------- */
+  const pauseForImage=()=>{setPaused(true);stopSpeaking();};
+  const textFallback=(id:string)=>{setItems(prev=>prev.map(it=>it.id===id?{...it,questionDisplay:"text",task:it.task?.type==="terms"?{...it.task,questionDisplay:"text"}:it.task}:it));setFailedImages(prev=>new Set([...prev].filter(v=>v!==id)));};
+  const renderQuestion=(it:RunItem)=>it.questionDisplay==="image"?<LocalImage key={it.illustration?.imageId??it.id} id={it.illustration?.imageId??""} alt={it.illustration?.alt??""} onViewerOpen={pauseForImage} onFailure={()=>{pauseForImage();setFailedImages(prev=>new Set(prev).add(it.id));}} onReady={()=>setFailedImages(prev=>{if(!prev.has(it.id))return prev;const next=new Set(prev);next.delete(it.id);return next;})} onTextFallback={()=>textFallback(it.id)}/>:questionText(it);
 
   return (
     <div className="board" data-theme={s.theme} data-scale={s.fontScale} data-subject={terminology?"terms":"dates"} role="application" aria-label={studying?studyLabel:terminology?"Терминологический диктант":"Показ диктанта"}>
+      {phase!=="question"&&imageProblems.length>0&&<div className="image-problems" role="alert">
+        <p>Проверьте изображения перед показом:</p>
+        {imageProblems.map(p=><div key={p.index}>Задание {p.index+1}: {p.message}. {plan.scenarioId&&<a href={(process.env.NEXT_PUBLIC_BASE_PATH??"")+"/scenarios/editor/?id="+encodeURIComponent(plan.scenarioId)+"&focus="+encodeURIComponent(items[p.index].id)}>Открыть задание</a>} {items[p.index].questionDisplay==="image"&&<button className="b-btn" onClick={()=>textFallback(items[p.index].id)}>Показать текст</button>}</div>)}
+        <button className="b-btn" onClick={()=>setCheckAttempt(v=>v+1)}>Повторить проверку изображений</button>
+      </div>}
       {shade && (
         <div className="b-shade" onClick={() => setShade(false)}>
           Шторка · нажмите, чтобы продолжить
@@ -399,12 +419,14 @@ export default function Board({ plan, initialPhase = "start", session = null, re
               {s.mode === "auto" ? `${s.intervalSec} сек на ответ` : "смена вручную"}
               {plan.repeat ? " · повтор порядка" : ""}
             </p>
-            <button type="button" className="b-btn b-primary mt-12" onClick={start} disabled={total === 0}>
+            <button type="button" className="b-btn b-primary mt-12" onClick={start} disabled={total === 0||checkingImages||imageProblems.length>0}>
               <Icons.Play size={26} />
               Начать
             </button>
             <button type="button" className="b-btn mt-3" onClick={() => setPreview(!preview)}>Предпросмотр доски</button>
-            {preview && current && (current.task&&current.task.type!=="terms" ? <TaskBoard task={current.task} response={responses[current.id]??{}} onChange={r=>setResponses(p=>({...p,[current.id]:r}))}/> : <div className="b-question mt-4">{questionText(current)}</div>)}
+            {checkingImages&&<p role="status">Проверка изображений…</p>}
+            {preview && current && <p className="mt-3">{current.ask==="date"?"Запишите дату":current.ask==="event"?"Запишите событие":current.ask==="term"?"Запишите понятие":"Запишите определение"}</p>}
+            {preview && current && (current.task&&current.task.type!=="terms" ? <TaskBoard task={current.task} response={responses[current.id]??{}} onChange={r=>setResponses(p=>({...p,[current.id]:r}))}/> : <div className="b-question mt-4">{renderQuestion(current)}</div>)}
             {total === 0 && (
               <p className="mt-4" style={{ color: "var(--b-mute)" }}>
                 В наборе нет заполненных заданий для показа.
@@ -456,8 +478,8 @@ export default function Board({ plan, initialPhase = "start", session = null, re
             <div className="mb-6 text-[1.1rem] font-semibold uppercase tracking-[0.14em]" style={{ color: "var(--b-mute)" }}>
               {terminology?(current.ask==="term"?"Запишите понятие":"Запишите определение"):current.ask === "date" ? "Запишите дату" : "Запишите событие"}
             </div>
-            <div key={index} className={`b-question ${current.ask === "event" ? "is-date" : ""}`} style={questionText(current).length > 100 ? { fontSize: "clamp(1.8rem, 4vw, 4rem)", maxWidth: "38ch" } : undefined}>
-              {questionText(current)}
+            <div key={index} className={`b-question ${current.ask === "event" ? "is-date" : ""}`} style={current.questionDisplay!=="image"&&questionText(current).length > 100 ? { fontSize: "clamp(1.8rem, 4vw, 4rem)", maxWidth: "38ch" } : undefined}>
+              {renderQuestion(current)}
             </div>
             </>}
             {paused && (
@@ -488,7 +510,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
                 <Icons.Prev size={26} />
               </button>
               {(
-                <button type="button" className="b-btn" onClick={() => setPaused((p) => !p)} aria-label={paused ? "Продолжить" : "Пауза"}>
+                <button type="button" className="b-btn" disabled={failedImages.has(current.id)} onClick={() => setPaused((p) => !p)} aria-label={paused ? "Продолжить" : "Пауза"}>
                   {paused ? <Icons.Play size={26} /> : <Icons.Pause size={26} />}
                 </button>
               )}
@@ -498,7 +520,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
             </div>
             <div className="flex items-center gap-1">
               {voiceOk && (
-                <button type="button" className="b-btn" onClick={repeatVoice} data-active={speaking} aria-label="Повторить голосом">
+                <button type="button" className="b-btn" disabled={current.questionDisplay==="image"} onClick={repeatVoice} data-active={speaking} aria-label="Повторить голосом">
                   <Icons.Speaker size={24} />
                   <span className="hidden sm:inline">Повторить</span>
                 </button>
@@ -605,7 +627,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
                 type="button"
                 className="b-btn"
                 onClick={() => {
-                  if (!(activity ? printWorksheet(plan.title,items,true,sources) : printAnswers(plan.title, items, `${DIRECTION_LABEL[s.direction]}`))) toast("Разрешите всплывающие окна для печати");
+                  if (!(activity ? printWorksheet(plan.title,items,true,sources) : printAnswers(plan.title, items, `${DIRECTION_LABEL[s.direction]}`,sources))) toast("Разрешите всплывающие окна для печати");
                 }}
                 aria-label="Печать"
               >
@@ -648,7 +670,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
                       {i + 1}
                     </div>
                     <div className="rv-question leading-snug">
-                      {studying?<button type="button" className="rv-toggle" aria-label={(open?"Скрыть ":"Открыть ")+answerNoun+": "+questionText(it)} aria-expanded={open} onClick={e=>{e.stopPropagation();setRevealed(prev=>{const next=new Set(prev);if(next.has(i))next.delete(i);else next.add(i);return next;});}}>{questionText(it)}</button>:questionText(it)}
+                      {it.questionDisplay==="image"?<>{renderQuestion(it)}{studying&&<button type="button" className="b-btn" aria-expanded={open} onClick={e=>{e.stopPropagation();setRevealed(prev=>{const next=new Set(prev);if(next.has(i))next.delete(i);else next.add(i);return next;});}}>{open?"Скрыть ответ":"Открыть ответ"}</button>}</>:studying?<button type="button" className="rv-toggle" aria-label={(open?"Скрыть ":"Открыть ")+answerNoun+": "+questionText(it)} aria-expanded={open} onClick={e=>{e.stopPropagation();setRevealed(prev=>{const next=new Set(prev);if(next.has(i))next.delete(i);else next.add(i);return next;});}}>{questionText(it)}</button>:questionText(it)}
                       {it.task?.type==="image" && <LocalImage id={it.task.imageId} alt={it.task.alt}/>}
                     </div>
                     <div className="rv-answer leading-snug">
@@ -661,7 +683,7 @@ export default function Board({ plan, initialPhase = "start", session = null, re
                               title={era.label}
                             />
                           )}
-                          <span>{answerText(it)}{it.task?.explanation&&<span className="mt-2 block text-base">{it.task.explanation}</span>}</span>
+                          <span>{answerText(it)}{it.task?.explanation&&<span className="mt-2 block text-base">{it.task.explanation}</span>}{it.illustration?.source&&/^https?:\/\//i.test(it.illustration.source)&&<a className="mt-2 block text-base underline" href={it.illustration.source} target="_blank" rel="noreferrer">Источник изображения</a>}</span>
                         </span>
                       ) : (
                         <span className="rv-mask" aria-label="Скрыто" />

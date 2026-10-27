@@ -2,7 +2,7 @@ import type { ActiveRun, ActivityTask, ImageAsset, LocalPreference, RunItem, Sce
 
 export interface TransferFile {
   format: "chronos-backup" | "chronos-package";
-  version: 1 | 2 | 3;
+  version: 1 | 2 | 3 | 4;
   exportedAt: string;
   scenarios: ScenarioFull[];
   sessions: SessionRecord[];
@@ -16,6 +16,11 @@ function object(value: unknown): value is Record<string, unknown> {
 }
 function text(value: unknown): value is string { return typeof value === "string"; }
 function optionalText(value: unknown) { return value === undefined || value === null || text(value); }
+function illustrated(value:Record<string,unknown>):boolean {
+  if(value.questionDisplay!==undefined&&!["text","image"].includes(String(value.questionDisplay)))return false;
+  const i=value.illustration;
+  return i===undefined || object(i)&&text(i.imageId)&&Boolean(i.imageId)&&text(i.alt)&&optionalText(i.source);
+}
 function preference(value:unknown):boolean {
   if(!object(value)||!text(value.id))return false;
   if(value.id.endsWith(":opened")||["modifiedAt","backupExportedAt"].includes(value.id))return text(value.value);
@@ -24,7 +29,7 @@ function preference(value:unknown):boolean {
 }
 function tasks(value: unknown): value is ActivityTask[] {
   return Array.isArray(value) && value.every(t => {
-    if (!object(t) || !text(t.id) || !text(t.prompt) || !optionalText(t.explanation)) return false;
+    if (!object(t) || !text(t.id) || !text(t.prompt) || !optionalText(t.explanation) || !illustrated(t)) return false;
     if (t.type === "qa" || t.type === "terms") return text(t.answer);
     if (t.type === "image") return text(t.answer) && text(t.imageId) && text(t.alt) && optionalText(t.caption) && optionalText(t.source);
     if (t.type === "choice") return Array.isArray(t.options) && t.options.length >= 2 && t.options.length <= 4 && t.options.every(text) && Number.isInteger(t.correctIndex) && Number(t.correctIndex) >= 0 && Number(t.correctIndex) < t.options.length;
@@ -41,10 +46,10 @@ function scenario(value: unknown): boolean {
     && (value.favorite === undefined || typeof value.favorite === "boolean")
     && (!value.tasks || tasks(value.tasks))
     && (type === "dictation" || (Array.isArray(value.tasks) && value.tasks.every(t => t.type === type)))
-    && value.events.every(e => object(e) && text(e.dateText ?? e.date ?? "") && text(e.title));
+    && value.events.every(e => object(e) && text(e.dateText ?? e.date ?? "") && text(e.title) && illustrated(e));
 }
 function runItems(value: unknown): value is RunItem[] {
-  return Array.isArray(value) && value.every(it => object(it) && text(it.id) && text(it.title) && text(it.dateText) && ["date","event","term","definition"].includes(String(it.ask)) && (!it.task || tasks([it.task])) && (["term","definition"].includes(String(it.ask)) ? object(it.task)&&it.task.type==="terms" : !(object(it.task)&&it.task.type==="terms")) && (it.studyIndex===undefined || Number.isInteger(it.studyIndex)&&Number(it.studyIndex)>=0) && (it.presentationOrder===undefined || (Array.isArray(it.presentationOrder) && it.presentationOrder.every(text) && object(it.task) && it.task.type==="sequence" && Array.isArray(it.task.cards) && it.presentationOrder.length===it.task.cards.length && new Set(it.presentationOrder).size===it.presentationOrder.length && it.task.cards.every(c=>it.presentationOrder instanceof Array && it.presentationOrder.includes(c.id)))));
+  return Array.isArray(value) && value.every(it => object(it) && illustrated(it) && text(it.id) && text(it.title) && text(it.dateText) && ["date","event","term","definition"].includes(String(it.ask)) && (!it.task || tasks([it.task])) && (["term","definition"].includes(String(it.ask)) ? object(it.task)&&it.task.type==="terms" : !(object(it.task)&&it.task.type==="terms")) && (it.studyIndex===undefined || Number.isInteger(it.studyIndex)&&Number(it.studyIndex)>=0) && (it.presentationOrder===undefined || (Array.isArray(it.presentationOrder) && it.presentationOrder.every(text) && object(it.task) && it.task.type==="sequence" && Array.isArray(it.task.cards) && it.presentationOrder.length===it.task.cards.length && new Set(it.presentationOrder).size===it.presentationOrder.length && it.task.cards.every(c=>it.presentationOrder instanceof Array && it.presentationOrder.includes(c.id)))));
 }
 function session(value: unknown): boolean {
   return object(value) && text(value.id) && text(value.scenarioTitle) && text(value.startedAt) && text(value.finishedAt)
@@ -63,10 +68,12 @@ function active(value: unknown): boolean {
 }
 export function imageIds(data: Pick<TransferFile,"scenarios"|"sessions"|"activeRuns">): Set<string> {
   const ids = new Set<string>();
-  const collect = (t?: ActivityTask) => { if (t?.type === "image" && t.imageId) ids.add(t.imageId); };
-  data.scenarios.forEach(s=>s.tasks?.forEach(collect));
-  data.sessions.forEach(s=>s.items.forEach(it=>collect(it.task)));
-  data.activeRuns.forEach(r=>r.plan.items.forEach(it=>collect(it.task)));
+  const collectIllustration=(v:{illustration?:{imageId:string}})=>{if(v.illustration?.imageId)ids.add(v.illustration.imageId);};
+  const collect = (t?: ActivityTask) => { if (t?.type === "image" && t.imageId) ids.add(t.imageId);if(t?.type==="terms")collectIllustration(t); };
+  const collectItem=(it:RunItem)=>{collect(it.task);collectIllustration(it);};
+  data.scenarios.forEach(s=>{s.tasks?.forEach(collect);s.events.forEach(collectIllustration);});
+  data.sessions.forEach(s=>s.items.forEach(collectItem));
+  data.activeRuns.forEach(r=>r.plan.items.forEach(collectItem));
   return ids;
 }
 /** Validate the entire file before opening a write transaction; drafts remain editable. */
@@ -74,7 +81,7 @@ export function inspectTransfer(value: unknown, expected?: "chronos-backup"): Tr
   let raw: Record<string, unknown>;
   if (object(value) && value.format) {
     if (!["chronos-backup","chronos-package"].includes(String(value.format))) throw new Error("Неизвестный формат файла");
-    if (![1,2,3].includes(Number(value.version)) || typeof value.version !== "number") throw new Error("Эта версия файла пока не поддерживается. Обновите приложение.");
+    if (![1,2,3,4].includes(Number(value.version)) || typeof value.version !== "number") throw new Error("Эта версия файла пока не поддерживается. Обновите приложение.");
     raw = value;
   } else {
     if (expected) throw new Error("Выберите полную резервную копию");

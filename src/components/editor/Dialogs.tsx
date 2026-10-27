@@ -5,6 +5,7 @@ import type { RunItem } from "@/lib/types";
 import { copyText, itemsToText, makeVariants, parsePasted, questionText, type ParsedLine, type Variants } from "@/lib/utils";
 import { printVariants } from "@/lib/client";
 import { Dialog, Icons, Seg } from "@/components/ui";
+import LocalImage,{useImageSources} from "../LocalImage";
 
 /* ---------- quick paste ---------- */
 
@@ -142,6 +143,7 @@ export function VariantsDialog({
   toast: (m: string) => void;
 }) {
   const [variants, setVariants] = useState<Variants>({ a: [], b: [] });
+  const sources=useImageSources(baseItems);
 
   useEffect(() => {
     if (open) setVariants(makeVariants(baseItems));
@@ -167,7 +169,7 @@ export function VariantsDialog({
         {items.map((it, i) => (
           <li key={`${it.id}-${i}`} className="flex gap-2">
             <span className="w-6 text-right tabular-nums text-mute">{i + 1}.</span>
-            <span>{questionText(it)}</span>
+            <div className="min-w-0 flex-1">{it.questionDisplay==="image"&&it.illustration?<LocalImage id={it.illustration.imageId} alt={it.illustration.alt}/>:questionText(it)}</div>
           </li>
         ))}
       </ol>
@@ -203,7 +205,7 @@ export function VariantsDialog({
             type="button"
             className="btn btn-primary"
             onClick={() => {
-              if (!printVariants(title, variants.a, variants.b)) toast("Разрешите всплывающие окна для печати");
+              if (!printVariants(title, variants.a, variants.b,sources)) toast("Разрешите всплывающие окна для печати");
             }}
           >
             <Icons.Print size={18} />

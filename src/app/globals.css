@@ -429,6 +429,9 @@ textarea.field { padding: 0.75rem 0.85rem; line-height: 1.45; resize: vertical; 
 .board > .flex { min-height: 0; }
 .board > .flex > .flex-1 { min-height: 0; overflow-y: auto; }
 .board .b-question { overflow-wrap: anywhere; }
+.image-problems { flex-shrink: 0; max-height: 35vh; overflow: auto; padding: 16px 24px; border-bottom: 2px solid var(--b-line); font-size: 1.1rem; }
+.image-problems a { text-decoration: underline; }
+.illustration-editor { font-size: 1rem; background: var(--paper, #fff); }
 .local-image-open { display: block; width: 100%; cursor: zoom-in; border: 0; background: transparent; color: inherit; }
 .local-image-hint { display: inline-block; padding: 12px 18px; font-size: 1rem; }
 .image-viewer { position: fixed; inset: 0; margin: 0; padding: 0; width: 100vw; height: 100dvh; max-width: none; max-height: none; border: 0; background: #f4f4f1; color: #111; }

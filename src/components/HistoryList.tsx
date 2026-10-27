@@ -7,11 +7,13 @@ import { DIRECTION_LABEL, MODE_LABEL, copyText, fmtClock, fmtDateTime, itemsToTe
 import { api, printAnswers } from "@/lib/client";
 import { useApp } from "./AppProvider";
 import { Confirm, Icons, Menu } from "./ui";
+import {useImageSources} from "./LocalImage";
 
 export default function HistoryList({ initial }: { initial: SessionRecord[] }) {
   const router = useRouter();
   const { startRun, openReview, toast } = useApp();
   const [items, setItems] = useState(initial);
+  const sources=useImageSources(items.flatMap(s=>s.items.map(it=>it.task?.type==="image"?it.task:it)));
   useEffect(() => setItems(initial), [initial]);
   const [toDelete, setToDelete] = useState<SessionRecord | null>(null);
 
@@ -51,7 +53,7 @@ export default function HistoryList({ initial }: { initial: SessionRecord[] }) {
       activityType:hard[0]?.task?.type ?? "dictation",
       tasks:hard.flatMap(it=>it.task?[it.task]:[]),
       settings:hard[0]?.task?{mode:"manual",voice:false}:undefined,
-      events: hard.map((it) => ({ dateText: it.dateText, title: it.title, era: it.era })),
+      events: hard[0]?.task?[]:hard.map((it) => ({ dateText: it.dateText, title: it.title, era: it.era,illustration:it.illustration,questionDisplay:it.questionDisplay })),
     });
     toast(`Создан сценарий из ${hard.length} трудных ${hard[0]?.task?.type==="terms"?"понятий":"заданий"}`);
     router.push(`/scenarios/editor/?id=${created.id}`);
@@ -150,7 +152,7 @@ export default function HistoryList({ initial }: { initial: SessionRecord[] }) {
                     {
                       label: "Печать ответов",
                       icon: <Icons.Print size={20} />,
-                      onClick: () => printAnswers(s.scenarioTitle, s.items, `${fmtDateTime(s.finishedAt)}${s.className ? ", " + s.className : ""}`) || toast("Разрешите всплывающие окна"),
+                      onClick: () => printAnswers(s.scenarioTitle, s.items, `${fmtDateTime(s.finishedAt)}${s.className ? ", " + s.className : ""}`,sources) || toast("Разрешите всплывающие окна"),
                     },
                     {
                       label: "Копировать ответы",
